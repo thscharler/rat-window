@@ -36,9 +36,17 @@ where
     /// __read-only__
     pub area: Rect,
 
-    /// offset of the window pane.
-    /// there are no negative coordinates.
-    /// this offset makes good for it.
+    /// Offset of the displayed area of the window pane.
+    ///
+    /// The window pane extends by this offset beyond the currently
+    /// visible area, and windows are limited to this space.
+    /// This way windows can be moved partially outside the pane
+    /// without negative coords (which don't exist).
+    ///
+    /// For the right/bottom border this is a somewhat soft border.
+    /// You can manually place windows beyond, and resizing the
+    /// terminal will also not affect the window positions.
+    ///
     /// __read+write___
     pub zero_offset: Position,
 
@@ -121,7 +129,7 @@ where
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
         state.area = area;
 
-        // necessary buffer
+        // necessary buffer area. only need enough for the windows.
         let mut tmp_area: Option<Rect> = None;
         let mut it = state.win.iter();
         loop {
@@ -178,7 +186,7 @@ where
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WindowsState")
             .field("area", &self.area)
-            .field("zero", &self.zero_offset)
+            .field("zero_offset", &self.zero_offset)
             .field("max_id", &self.max_id)
             .field("win_handle", &self.win_handle)
             .field("win", &self.win)
@@ -278,6 +286,21 @@ where
                         state.area.x = (base.x + pos.x).saturating_sub(zero.x);
                         state.area.y = (base.y + pos.y).saturating_sub(zero.y);
 
+                        // limit movement
+                        let bounds = self.windows_area();
+                        if state.area.right() >= bounds.right() {
+                            state.area.x = state
+                                .area
+                                .x
+                                .saturating_sub(state.area.right() - bounds.right())
+                        }
+                        if state.area.bottom() >= bounds.bottom() {
+                            state.area.y = state
+                                .area
+                                .y
+                                .saturating_sub(state.area.bottom() - bounds.bottom())
+                        }
+
                         Outcome::Changed
                     }
                     _ => Outcome::Continue,
@@ -303,8 +326,13 @@ where
         Self::default()
     }
 
-    /// Zero point for the internal coordinate system.
-    pub fn zero(mut self, x: u16, y: u16) -> Self {
+    /// Offset of the displayed area of the window pane.
+    ///
+    /// The window pane extends by this offset beyond the currently
+    /// visible area, and windows are limited to this space.
+    /// This way windows can be moved partially outside the pane
+    /// without negative coords (which don't exist).
+    pub fn zero_offset(mut self, x: u16, y: u16) -> Self {
         self.zero_offset = Position::new(x, y);
         self
     }
@@ -326,6 +354,24 @@ impl<T> WindowsState<T>
 where
     T: Window,
 {
+    /// Get the bounds for the windows coordinate system.
+    /// This always starts at 0,0 and extends to
+    /// zero.x+width+zero.x / zero.y+height+zero.y
+    ///
+    /// Windows are constrained to this area.
+    ///
+    /// This way windows can be moved partially outside the bounds
+    /// of the windows area without falling back to negative coords
+    /// (which don't exist).
+    pub fn windows_area(&self) -> Rect {
+        Rect::new(
+            0,
+            0,
+            self.zero_offset.x + self.area.width + self.zero_offset.x,
+            self.zero_offset.x + self.area.height + self.zero_offset.y,
+        )
+    }
+
     /// Show with bounds.
     ///
     /// Bounds are relative to the zero-point.
@@ -572,30 +618,6 @@ where
         }
         None
     }
-
-    // // transform from 0-based coordinates relative to windows area
-    // // into the true windows coordinates which are relative to windows.zero
-    // //
-    // // this is necessary to enable negative coordinates for windows.
-    // fn shift_0_in(&self, rect: Rect) -> Rect {
-    //     Rect::new(
-    //         rect.x + self.zero_offset.x,
-    //         rect.y + self.zero_offset.y,
-    //         rect.width,
-    //         rect.height,
-    //     )
-    // }
-    //
-    // // transform from 0-based coordinates relative to windows area
-    // // into the true windows coordinates which are relative to windows.zero
-    // //
-    // // this is necessary to enable negative coordinates for windows.
-    // #[allow(dead_code)]
-    // fn shift_0_in_pos(&self, pos: Position) -> Position {
-    //     let x = pos.x + self.zero_offset.x;
-    //     let y = pos.y + self.zero_offset.y;
-    //     Position::new(x, y)
-    // }
 
     // transformation from terminal-space to windows-space
     #[allow(dead_code)]

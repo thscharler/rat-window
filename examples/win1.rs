@@ -25,7 +25,7 @@ fn main() -> Result<(), anyhow::Error> {
 
     let mut state = State {
         win: WindowsState::new()
-            // .zero(10, 10)
+            .zero_offset(3, 3)
             .deco(One)
             .deco_style(OneStyle {
                 block: Block::bordered().border_type(BorderType::Rounded),
