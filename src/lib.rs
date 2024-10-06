@@ -2,10 +2,12 @@ use std::fmt::{Display, Formatter};
 
 mod deco_one;
 mod window;
+mod window_builder;
 mod window_style;
 mod windows;
 
 pub use window::*;
+pub use window_builder::WindowBuilder;
 pub use windows::*;
 
 pub mod utils;

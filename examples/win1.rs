@@ -1,11 +1,10 @@
 use crate::mini_salsa::theme::THEME;
 use crate::mini_salsa::{run_ui, setup_logging, MiniSalsaState};
-use crossterm::event::{MouseEvent, MouseEventKind};
 use rat_event::{ct_event, try_flow, HandleEvent, Outcome, Regular};
 use rat_focus::HasFocusFlag;
 use rat_window::deco::{One, OneStyle};
 use rat_window::utils::fill_buf_area;
-use rat_window::{Window, WindowState, WindowUserState, Windows, WindowsState};
+use rat_window::{Window, WindowBuilder, WindowState, WindowUserState, Windows, WindowsState};
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::prelude::Widget;
@@ -83,13 +82,10 @@ fn handle_windows(
     try_flow!(match event {
         ct_event!(keycode press F(2)) => {
             let c = (rand::random::<u8>() % 26 + b'a') as char;
-            state.win.show_at(
-                MinWin { fill: c }.boxed(),
-                WindowState::default().set_title("one".into()),
-                MinWinState {
-                    msg: format!(" {} ", rand::random::<u8>()),
-                },
-                Rect::new(20, 20, 20, 20),
+            state.win.show(
+                WindowBuilder::new(MinWin::new().fill(c).boxed())
+                    .user_state(MinWinState::new(format!(" {} ", rand::random::<u8>())))
+                    .area(Rect::new(10, 10, 10, 10)),
             );
             Outcome::Changed
         }
@@ -113,12 +109,16 @@ struct MinWinState {
 impl WindowUserState for MinWinState {}
 
 impl MinWin {
-    #[allow(dead_code)]
     fn new() -> Self {
         Self::default()
     }
 
-    fn boxed(self) -> Box<Self> {
+    fn fill(mut self, fill: char) -> Self {
+        self.fill = fill;
+        self
+    }
+
+    fn boxed(self) -> Box<dyn Window> {
         Box::new(self)
     }
 }
@@ -150,5 +150,11 @@ impl StatefulWidgetRef for MinWin {
         } else {
             (&user_state.msg).render(area, buf);
         }
+    }
+}
+
+impl MinWinState {
+    pub fn new(msg: impl Into<String>) -> Self {
+        Self { msg: msg.into() }
     }
 }

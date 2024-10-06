@@ -1,8 +1,8 @@
 use crate::deco::One;
 use crate::deco_one::OneStyle;
 use crate::utils::{copy_buffer, fill_buf_area};
-use crate::window_style::{WindowFrame, WindowFrameStyle};
-use crate::{Error, Window, WindowState, WindowUserState};
+use crate::window_style::{WindowDeco, WindowDecoStyle};
+use crate::{Error, Window, WindowBuilder, WindowState, WindowUserState};
 use bimap::BiMap;
 use rat_event::{ct_event, HandleEvent, MouseOnly, Outcome, Regular};
 use rat_focus::HasFocusFlag;
@@ -53,8 +53,8 @@ where
 
     /// default decorations
     /// __read+write__
-    pub default_deco: Rc<dyn WindowFrame>,
-    pub default_deco_style: Rc<dyn WindowFrameStyle>,
+    pub default_deco: Rc<dyn WindowDeco>,
+    pub default_deco_style: Rc<dyn WindowDecoStyle>,
 
     // max handle
     max_id: usize,
@@ -74,9 +74,9 @@ struct WinStruct<T> {
     // user data
     user_state: Rc<RefCell<dyn WindowUserState>>,
     // frame decoration
-    frame: Rc<dyn WindowFrame>,
+    deco: Rc<dyn WindowDeco>,
     // frame decoration styles
-    frame_style: Rc<dyn WindowFrameStyle>,
+    deco_style: Rc<dyn WindowDecoStyle>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -159,8 +159,8 @@ where
             win,
             state: win_state,
             user_state: win_user_state,
-            frame: win_frame,
-            frame_style: win_frame_style,
+            deco: win_frame,
+            deco_style: win_frame_style,
         } in state.win.iter()
         {
             // Clear out window area
@@ -341,8 +341,8 @@ where
     /// Default window decorations.
     pub fn deco(
         mut self,
-        deco: impl WindowFrame + 'static,
-        style: impl WindowFrameStyle + 'static,
+        deco: impl WindowDeco + 'static,
+        style: impl WindowDecoStyle + 'static,
     ) -> Self {
         assert_eq!(deco.style_id(), style.type_id());
         self.default_deco = Rc::new(deco);
@@ -356,18 +356,18 @@ where
     /// Changes only windows that have the same deco/style type-id.
     pub fn change_deco(
         &mut self,
-        deco: impl WindowFrame + 'static,
-        style: impl WindowFrameStyle + 'static,
+        deco: impl WindowDeco + 'static,
+        style: impl WindowDecoStyle + 'static,
     ) {
         let new_deco = Rc::new(deco);
         let new_style = Rc::new(style);
 
         for w in self.win.iter_mut() {
-            if w.frame.type_id() == new_deco.type_id() {
-                w.frame = new_deco.clone();
+            if w.deco.type_id() == new_deco.type_id() {
+                w.deco = new_deco.clone();
             }
-            if w.frame_style.type_id() == new_style.type_id() {
-                w.frame_style = new_style.clone();
+            if w.deco_style.type_id() == new_style.type_id() {
+                w.deco_style = new_style.clone();
             }
         }
     }
@@ -395,32 +395,41 @@ where
         )
     }
 
-    /// Show with bounds.
+    /// Show a window.
     ///
-    /// Bounds are relative to the zero-point.
-    pub fn show_at<U: WindowUserState>(
-        &mut self,
-        window: T,
-        state: WindowState,
-        user: U,
-        bounds: Rect,
-    ) -> WindowHandle {
+    /// The builder parameter looks quit impressive, but you want
+    /// to use WindowBuilder for that anyway.
+    pub fn show(&mut self, builder: WindowBuilder<T>) -> WindowHandle {
         let handle = self.new_handle();
         let idx = self.win.len();
         self.win_handle
             .insert_no_overwrite(handle, idx)
             .expect("no duplicate");
 
-        let mut state = state;
-        state.area = bounds;
+        let st = WinStruct {
+            win: builder.win,
+            state: builder.state,
+            user_state: builder.user,
+            deco: builder.deco.unwrap_or(self.default_deco.clone()),
+            deco_style: builder
+                .deco_style
+                .unwrap_or(self.default_deco_style.clone()),
+        };
 
-        self.win.push(WinStruct {
-            win: window,
-            state: Rc::new(RefCell::new(state)),
-            user_state: Rc::new(RefCell::new(user)),
-            frame: Rc::clone(&self.default_deco),
-            frame_style: Rc::clone(&self.default_deco_style),
-        });
+        // some sensible defaults...
+        {
+            let mut state = st.state.borrow_mut();
+            if state.area.is_empty() {
+                state.area = Rect::new(
+                    self.zero_offset.x,
+                    self.zero_offset.y,
+                    self.area.width,
+                    self.area.height,
+                );
+            }
+        }
+
+        self.win.push(st);
 
         handle
     }
@@ -563,24 +572,24 @@ where
         Ok(self.win[idx].user_state.clone())
     }
 
-    pub fn frame(&self, handle: WindowHandle) -> Rc<dyn WindowFrame> {
+    pub fn frame(&self, handle: WindowHandle) -> Rc<dyn WindowDeco> {
         let idx = self.try_handle_idx(handle).expect("valid idx");
-        self.win[idx].frame.clone()
+        self.win[idx].deco.clone()
     }
 
-    pub fn try_frame(&self, handle: WindowHandle) -> Result<Rc<dyn WindowFrame>, Error> {
+    pub fn try_frame(&self, handle: WindowHandle) -> Result<Rc<dyn WindowDeco>, Error> {
         let idx = self.try_handle_idx(handle)?;
-        Ok(self.win[idx].frame.clone())
+        Ok(self.win[idx].deco.clone())
     }
 
-    pub fn frame_style(&self, handle: WindowHandle) -> Rc<dyn WindowFrameStyle> {
+    pub fn frame_style(&self, handle: WindowHandle) -> Rc<dyn WindowDecoStyle> {
         let idx = self.try_handle_idx(handle).expect("valid idx");
-        self.win[idx].frame_style.clone()
+        self.win[idx].deco_style.clone()
     }
 
-    pub fn try_frame_style(&self, handle: WindowHandle) -> Result<Rc<dyn WindowFrameStyle>, Error> {
+    pub fn try_frame_style(&self, handle: WindowHandle) -> Result<Rc<dyn WindowDecoStyle>, Error> {
         let idx = self.try_handle_idx(handle)?;
-        Ok(self.win[idx].frame_style.clone())
+        Ok(self.win[idx].deco_style.clone())
     }
 }
 

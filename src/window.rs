@@ -82,22 +82,22 @@ pub struct WindowState {
 
 impl dyn Window {
     /// down cast Any style.
-    pub fn downcast_ref<R: 'static>(&self) -> &R {
+    pub fn downcast_ref<R: Window>(&self) -> Option<&R> {
         if self.type_id() == TypeId::of::<R>() {
             let p: *const dyn Window = self;
-            unsafe { &*(p as *const R) }
+            Some(unsafe { &*(p as *const R) })
         } else {
-            panic!("wrong type")
+            None
         }
     }
 
     /// down cast Any style.
-    pub fn downcast_mut<R: 'static>(&mut self) -> &mut R {
-        if self.type_id() == TypeId::of::<R>() {
+    pub fn downcast_mut<R: Window>(&'_ mut self) -> Option<&'_ mut R> {
+        if (&*self).type_id() == TypeId::of::<R>() {
             let p: *mut dyn Window = self;
-            unsafe { &mut *(p as *mut R) }
+            Some(unsafe { &mut *(p as *mut R) })
         } else {
-            panic!("wrong type")
+            None
         }
     }
 }
@@ -120,7 +120,7 @@ impl WindowUserState for () {}
 
 impl dyn WindowUserState {
     /// down cast Any style.
-    pub fn downcast_ref<R: 'static>(&self) -> &R {
+    pub fn downcast_ref<R: WindowUserState>(&self) -> &R {
         if self.type_id() == TypeId::of::<R>() {
             let p: *const dyn WindowUserState = self;
             unsafe { &*(p as *const R) }
@@ -130,8 +130,8 @@ impl dyn WindowUserState {
     }
 
     /// down cast Any style.
-    pub fn downcast_mut<R: 'static>(&mut self) -> &mut R {
-        if self.type_id() == TypeId::of::<R>() {
+    pub fn downcast_mut<R: WindowUserState>(&mut self) -> &mut R {
+        if (&*self).type_id() == TypeId::of::<R>() {
             let p: *mut dyn WindowUserState = self;
             unsafe { &mut *(p as *mut R) }
         } else {

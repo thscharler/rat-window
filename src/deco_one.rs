@@ -1,6 +1,6 @@
 use crate::_private::NonExhaustive;
 use crate::utils::fill_buf_area;
-use crate::window_style::{WindowFrame, WindowFrameStyle};
+use crate::window_style::{WindowDeco, WindowDecoStyle};
 use crate::WindowState;
 use rat_focus::HasFocusFlag;
 use ratatui::buffer::Buffer;
@@ -8,6 +8,7 @@ use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Style, Stylize};
 use ratatui::text::{Span, Text};
 use ratatui::widgets::{Block, StatefulWidgetRef, Widget};
+use std::any::TypeId;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -24,7 +25,11 @@ pub struct OneStyle {
     pub non_exhaustive: NonExhaustive,
 }
 
-impl WindowFrame for One {}
+impl WindowDeco for One {
+    fn style_id(&self) -> TypeId {
+        TypeId::of::<OneStyle>()
+    }
+}
 
 impl One {
     pub fn new() -> Self {
@@ -33,7 +38,7 @@ impl One {
 }
 
 impl StatefulWidgetRef for One {
-    type State = (Rc<RefCell<WindowState>>, Rc<dyn WindowFrameStyle>);
+    type State = (Rc<RefCell<WindowState>>, Rc<dyn WindowDecoStyle>);
 
     #[allow(clippy::collapsible_else_if)]
     fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
@@ -117,7 +122,7 @@ impl StatefulWidgetRef for One {
     }
 }
 
-impl WindowFrameStyle for OneStyle {}
+impl WindowDecoStyle for OneStyle {}
 
 impl Default for OneStyle {
     fn default() -> Self {

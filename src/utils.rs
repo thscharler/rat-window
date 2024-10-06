@@ -50,8 +50,6 @@ pub(crate) fn copy_buffer(tmp: &mut Buffer, shift: Position, area: Rect, buf: &m
         if let Some(buf_cell) = buf.cell_mut((x, y)) {
             if cell != Cell::EMPTY {
                 *buf_cell = cell;
-            } else {
-                buf_cell.set_style(Style::default().on_green());
             }
         }
     }
