@@ -10,6 +10,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
 use ratatui::prelude::{StatefulWidget, Style};
 use ratatui::widgets::Block;
+use std::any::Any;
 use std::cell::RefCell;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
@@ -338,15 +339,37 @@ where
     }
 
     /// Default window decorations.
-    pub fn deco(mut self, deco: impl WindowFrame + 'static) -> Self {
+    pub fn deco(
+        mut self,
+        deco: impl WindowFrame + 'static,
+        style: impl WindowFrameStyle + 'static,
+    ) -> Self {
+        assert_eq!(deco.style_id(), style.type_id());
         self.default_deco = Rc::new(deco);
+        self.default_deco_style = Rc::new(style);
         self
     }
 
-    /// Default window decoration styling.
-    pub fn deco_style(mut self, style: impl WindowFrameStyle + 'static) -> Self {
-        self.default_deco_style = Rc::new(style);
-        self
+    /// Change the deco-style for all windows.
+    /// Doesn't change the default, use deco for that.
+    ///
+    /// Changes only windows that have the same deco/style type-id.
+    pub fn change_deco(
+        &mut self,
+        deco: impl WindowFrame + 'static,
+        style: impl WindowFrameStyle + 'static,
+    ) {
+        let new_deco = Rc::new(deco);
+        let new_style = Rc::new(style);
+
+        for w in self.win.iter_mut() {
+            if w.frame.type_id() == new_deco.type_id() {
+                w.frame = new_deco.clone();
+            }
+            if w.frame_style.type_id() == new_style.type_id() {
+                w.frame_style = new_style.clone();
+            }
+        }
     }
 }
 

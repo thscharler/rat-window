@@ -12,6 +12,7 @@ use ratatui::prelude::Widget;
 use ratatui::style::Style;
 use ratatui::widgets::{Block, BorderType, StatefulWidget, StatefulWidgetRef};
 use ratatui::Frame;
+use std::any::TypeId;
 use std::cell::RefCell;
 use std::fmt::Debug;
 use std::rc::Rc;
@@ -24,16 +25,16 @@ fn main() -> Result<(), anyhow::Error> {
     let mut data = Data {};
 
     let mut state = State {
-        win: WindowsState::new()
-            .zero_offset(3, 3)
-            .deco(One)
-            .deco_style(OneStyle {
+        win: WindowsState::new().zero_offset(3, 3).deco(
+            One,
+            OneStyle {
                 block: Block::bordered().border_type(BorderType::Rounded),
                 title_style: Some(THEME.bluegreen(2)),
                 title_alignment: Some(Alignment::Right),
                 focus_style: Some(THEME.focus()),
                 ..Default::default()
-            }),
+            },
+        ),
     };
 
     run_ui(handle_windows, repaint_windows, &mut data, &mut state)
@@ -122,7 +123,11 @@ impl MinWin {
     }
 }
 
-impl Window for MinWin {}
+impl Window for MinWin {
+    fn state_id(&self) -> TypeId {
+        TypeId::of::<MinWinState>()
+    }
+}
 
 impl StatefulWidgetRef for MinWin {
     type State = (Rc<RefCell<WindowState>>, Rc<RefCell<dyn WindowUserState>>);

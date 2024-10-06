@@ -8,6 +8,8 @@ use std::rc::Rc;
 pub trait WindowFrame:
     StatefulWidgetRef<State = (Rc<RefCell<WindowState>>, Rc<dyn WindowFrameStyle>)> + Any
 {
+    /// Return the type-id of a compatible WindowFrameStyle.
+    fn style_id(&self) -> TypeId;
 }
 
 /// Style parameters for a window frame.

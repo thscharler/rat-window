@@ -11,6 +11,8 @@ use std::rc::Rc;
 pub trait Window:
     StatefulWidgetRef<State = (Rc<RefCell<WindowState>>, Rc<RefCell<dyn WindowUserState>>)> + Any
 {
+    /// Return the type-id of a compatible WindowUserState.
+    fn state_id(&self) -> TypeId;
 }
 
 pub trait WindowUserState: Any {}
@@ -88,9 +90,23 @@ impl dyn Window {
             panic!("wrong type")
         }
     }
+
+    /// down cast Any style.
+    pub fn downcast_mut<R: 'static>(&mut self) -> &mut R {
+        if self.type_id() == TypeId::of::<R>() {
+            let p: *mut dyn Window = self;
+            unsafe { &mut *(p as *mut R) }
+        } else {
+            panic!("wrong type")
+        }
+    }
 }
 
-impl Window for Box<dyn Window + 'static> {}
+impl Window for Box<dyn Window + 'static> {
+    fn state_id(&self) -> TypeId {
+        self.as_ref().state_id()
+    }
+}
 
 impl StatefulWidgetRef for Box<dyn Window + 'static> {
     type State = (Rc<RefCell<WindowState>>, Rc<RefCell<dyn WindowUserState>>);
@@ -108,6 +124,16 @@ impl dyn WindowUserState {
         if self.type_id() == TypeId::of::<R>() {
             let p: *const dyn WindowUserState = self;
             unsafe { &*(p as *const R) }
+        } else {
+            panic!("wrong type")
+        }
+    }
+
+    /// down cast Any style.
+    pub fn downcast_mut<R: 'static>(&mut self) -> &mut R {
+        if self.type_id() == TypeId::of::<R>() {
+            let p: *mut dyn WindowUserState = self;
+            unsafe { &mut *(p as *mut R) }
         } else {
             panic!("wrong type")
         }
