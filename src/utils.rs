@@ -1,5 +1,5 @@
 use ratatui::buffer::Buffer;
-use ratatui::layout::Rect;
+use ratatui::layout::{Position, Rect};
 use ratatui::prelude::Style;
 
 /// Fill the given area of the buffer.
@@ -20,34 +20,28 @@ pub fn fill_buf_area(buf: &mut Buffer, area: Rect, symbol: &str, style: impl Int
 /// Copy a tmp buffer to another buf.
 /// The tmp-buffer is left/top shifted by h_shift/v_shift.
 /// Everything is clipped to the target area.
-pub(crate) fn copy_buffer(
-    mut tmp: Buffer,
-    h_shift: u16,
-    v_shift: u16,
-    area: Rect,
-    buf: &mut Buffer,
-) {
+pub(crate) fn copy_buffer(mut tmp: Buffer, shift: Position, area: Rect, buf: &mut Buffer) {
     // copy buffer
     for (cell_offset, cell) in tmp.content.drain(..).enumerate() {
         let tmp_row = tmp.area.x + cell_offset as u16 / tmp.area.width;
         let tmp_col = tmp.area.y + cell_offset as u16 % tmp.area.width;
 
         // clip
-        if tmp_row < v_shift {
+        if tmp_row < shift.y {
             continue;
         }
-        if tmp_col < h_shift {
+        if tmp_col < shift.x {
             continue;
         }
-        if tmp_row - v_shift > area.height {
+        if tmp_row - shift.y > area.height {
             continue;
         }
-        if tmp_col - h_shift > area.width {
+        if tmp_col - shift.x > area.width {
             continue;
         }
 
-        let row = tmp_row - v_shift + area.y;
-        let col = tmp_col - h_shift + area.y;
+        let row = tmp_row - shift.y + area.y;
+        let col = tmp_col - shift.x + area.x;
 
         if let Some(buf_cell) = buf.cell_mut((col, row)) {
             *buf_cell = cell;

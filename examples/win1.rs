@@ -1,14 +1,17 @@
+use crate::mini_salsa::theme::THEME;
 use crate::mini_salsa::{run_ui, setup_logging, MiniSalsaState};
+use crossterm::event::{Event, MouseEvent, MouseEventKind};
 use log::debug;
 use rat_event::{ct_event, try_flow, HandleEvent, Outcome, Regular};
 use rat_focus::{FocusFlag, HasFocusFlag};
+use rat_window::deco::{One, OneStyle};
 use rat_window::utils::fill_buf_area;
 use rat_window::{Window, Windows, WindowsState};
 use ratatui::buffer::Buffer;
-use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::prelude::Widget;
 use ratatui::style::{Style, Stylize};
-use ratatui::widgets::{Block, StatefulWidget};
+use ratatui::widgets::{Block, BorderType, StatefulWidget};
 use ratatui::Frame;
 use std::fmt::Debug;
 
@@ -20,7 +23,16 @@ fn main() -> Result<(), anyhow::Error> {
     let mut data = Data {};
 
     let mut state = State {
-        win: WindowsState::default(),
+        win: WindowsState::new()
+            .zero(10, 10)
+            .deco(One)
+            .deco_style(OneStyle {
+                block: Block::bordered().border_type(BorderType::Rounded),
+                title_style: Some(THEME.bluegreen(2)),
+                title_alignment: Some(Alignment::Right),
+                focus_style: Some(THEME.focus()),
+                ..Default::default()
+            }),
     };
 
     run_ui(handle_windows, repaint_windows, &mut data, &mut state)
@@ -36,15 +48,12 @@ fn repaint_windows(
     frame: &mut Frame<'_>,
     area: Rect,
     _data: &mut Data,
-    istate: &mut MiniSalsaState,
+    _istate: &mut MiniSalsaState,
     state: &mut State,
 ) -> Result<(), anyhow::Error> {
     let l1 = Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).split(area);
 
-    Windows::new()
-        .block(Block::bordered().border_style(Style::default().fg(istate.theme.deepblue[2])))
-        .focus_style(Style::new().black().on_red())
-        .render(l1[0], frame.buffer_mut(), &mut state.win);
+    Windows::new().render(l1[0], frame.buffer_mut(), &mut state.win);
 
     Ok(())
 }
@@ -64,12 +73,23 @@ fn handle_windows(
                     focus: Default::default(),
                     area: Default::default(),
                 }),
-                Rect::new(2, 2, 20, 20),
+                Rect::new(0, 0, 20, 20),
             );
             Outcome::Changed
         }
         _ => Outcome::Continue,
     });
+
+    match event {
+        Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Moved,
+            ..
+        }) => {}
+        Event::Mouse(m) => {
+            debug!("*NO FUN {:?} {:?}", m.column, m.row);
+        }
+        _ => {}
+    }
 
     try_flow!(state.win.handle(event, Regular));
 

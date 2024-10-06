@@ -1,7 +1,6 @@
 use rat_focus::{FocusFlag, HasFocusFlag};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::prelude::Style;
 use std::any::Any;
 use std::fmt::Debug;
 
@@ -50,6 +49,9 @@ pub struct WindowState {
     /// Index with WindowState consts.
     /// __read only__
     pub areas: [Rect; 11],
+    /// Window title, available after render.
+    /// __read only__
+    pub title: String,
     /// Window modality, available after render.
     /// __read only__
     pub modal: bool,
@@ -62,9 +64,6 @@ pub struct WindowState {
     /// Window is moveable, available after render.
     /// __read only__
     pub moveable: bool,
-
-    /// Perceivable styling.
-    pub style: Style,
 
     /// Window focus.
     ///

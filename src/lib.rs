@@ -1,12 +1,18 @@
+use std::fmt::{Display, Formatter};
+
 mod deco_one;
 mod window;
+mod window_style;
 mod windows;
 
-pub mod utils;
-
-use std::fmt::{Display, Formatter};
 pub use window::*;
 pub use windows::*;
+
+pub mod utils;
+pub mod deco {
+    use crate::deco_one;
+    pub use deco_one::{One, OneStyle};
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
@@ -20,3 +26,8 @@ impl Display for Error {
 }
 
 impl std::error::Error for Error {}
+
+mod _private {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct NonExhaustive;
+}

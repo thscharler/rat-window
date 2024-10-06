@@ -1,141 +1,163 @@
+use crate::_private::NonExhaustive;
 use crate::utils::fill_buf_area;
+use crate::window_style::{WindowFrame, WindowFrameStyle};
 use crate::WindowState;
 use rat_focus::HasFocusFlag;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Style, Stylize};
 use ratatui::text::{Span, Text};
-use ratatui::widgets::{Block, StatefulWidget, Widget};
+use ratatui::widgets::{Block, StatefulWidgetRef, Widget};
+use std::cell::RefCell;
+use std::rc::Rc;
 
-#[derive(Debug)]
-pub(crate) struct OneDecoration<'a> {
-    block: Block<'a>,
-    title: Option<&'a str>,
-    title_style: Option<Style>,
-    title_alignment: Option<Alignment>,
-    focus_style: Option<Style>,
+#[derive(Debug, Clone)]
+pub struct One;
+
+#[derive(Debug, Clone)]
+pub struct OneStyle {
+    pub block: Block<'static>,
+    pub title_style: Option<Style>,
+    pub title_alignment: Option<Alignment>,
+    pub focus_style: Option<Style>,
+
+    pub non_exhaustive: NonExhaustive,
 }
 
-impl<'a> OneDecoration<'a> {
-    pub(crate) fn new() -> Self {
+impl WindowFrame for One {}
+
+impl One {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl StatefulWidgetRef for One {
+    type State = (Rc<RefCell<WindowState>>, Rc<dyn WindowFrameStyle>);
+
+    #[allow(clippy::collapsible_else_if)]
+    fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+        let win_style = state.1.as_ref().downcast_ref::<OneStyle>();
+        let mut win_state = state.0.borrow_mut();
+
+        {
+            win_state.area = Rect::new(area.x, area.y, area.width, area.height);
+            let inner = win_style.block.inner(area);
+            win_state.inner = Rect::new(inner.x, inner.y, inner.width, inner.height);
+        }
+
+        if win_state.closeable {
+            win_state.areas[WindowState::CLOSE] = Rect::new(area.right() - 5, area.top(), 3, 1);
+        } else {
+            win_state.areas[WindowState::CLOSE] = Rect::default();
+        }
+        if win_state.moveable {
+            win_state.areas[WindowState::MOVE] =
+                Rect::new(area.left() + 1, area.top(), area.width - 2, 1);
+        } else {
+            win_state.areas[WindowState::MOVE] = Rect::default();
+        }
+        if win_state.resizable {
+            win_state.areas[WindowState::RESIZE_TOP] = Rect::new(area.left() + 1, area.top(), 0, 1);
+            win_state.areas[WindowState::RESIZE_RIGHT] =
+                Rect::new(area.right() - 1, area.top() + 1, 1, area.height - 2);
+            win_state.areas[WindowState::RESIZE_BOTTOM] =
+                Rect::new(area.left() + 1, area.bottom() - 1, area.width - 2, 1);
+            win_state.areas[WindowState::RESIZE_LEFT] =
+                Rect::new(area.left(), area.top() + 1, 1, area.height - 2);
+            win_state.areas[WindowState::RESIZE_TOP_LEFT] =
+                Rect::new(area.left(), area.top(), 1, 1);
+            win_state.areas[WindowState::RESIZE_TOP_RIGHT] =
+                Rect::new(area.right() - 1, area.top(), 1, 1);
+            win_state.areas[WindowState::RESIZE_BOTTOM_RIGHT] =
+                Rect::new(area.right() - 1, area.bottom() - 1, 1, 1);
+            win_state.areas[WindowState::RESIZE_BOTTOM_LEFT] =
+                Rect::new(area.left(), area.bottom() - 1, 1, 1);
+        } else {
+            win_state.areas[WindowState::RESIZE_TOP] = Rect::default();
+            win_state.areas[WindowState::RESIZE_RIGHT] = Rect::default();
+            win_state.areas[WindowState::RESIZE_BOTTOM] = Rect::default();
+            win_state.areas[WindowState::RESIZE_LEFT] = Rect::default();
+            win_state.areas[WindowState::RESIZE_TOP_LEFT] = Rect::default();
+            win_state.areas[WindowState::RESIZE_TOP_RIGHT] = Rect::default();
+            win_state.areas[WindowState::RESIZE_BOTTOM_RIGHT] = Rect::default();
+            win_state.areas[WindowState::RESIZE_BOTTOM_LEFT] = Rect::default();
+        }
+        win_state.areas[WindowState::TITLE] =
+            Rect::new(area.left() + 1, area.top(), area.width - 2, 1);
+
+        win_style.block.clone().render(area, buf);
+
+        let style = if win_state.focus.is_focused() {
+            if let Some(focus_style) = win_style.focus_style {
+                focus_style
+            } else if let Some(title_style) = win_style.title_style {
+                title_style
+            } else {
+                Style::new().black().on_white()
+            }
+        } else {
+            if let Some(title_style) = win_style.title_style {
+                title_style
+            } else {
+                Style::new().black().on_white()
+            }
+        };
+        let alignment = win_style.title_alignment.unwrap_or_default();
+
+        if let Some(cell) = buf.cell_mut((area.left(), area.top())) {
+            cell.set_symbol("\u{2590}");
+        }
+        fill_buf_area(buf, win_state.areas[WindowState::TITLE], " ", style);
+        if let Some(cell) = buf.cell_mut((area.right() - 1, area.top())) {
+            cell.set_symbol("\u{258C}");
+        }
+
+        Text::from(win_state.title.as_str())
+            .style(style)
+            .alignment(alignment)
+            .render(win_state.areas[WindowState::TITLE], buf);
+
+        Span::from("[\u{2A2F}]").render(win_state.areas[WindowState::CLOSE], buf);
+    }
+}
+
+impl WindowFrameStyle for OneStyle {}
+
+impl Default for OneStyle {
+    fn default() -> Self {
         Self {
-            block: Block::bordered(),
-            title: None,
+            block: Default::default(),
             title_style: None,
             title_alignment: None,
             focus_style: None,
+            non_exhaustive: NonExhaustive,
         }
     }
+}
 
-    pub(crate) fn block(mut self, block: Option<Block<'a>>) -> Self {
+impl OneStyle {
+    pub fn block(mut self, block: Option<Block<'static>>) -> Self {
         if let Some(block) = block {
             self.block = block;
         }
         self
     }
 
-    pub(crate) fn title(mut self, title: Option<&'a str>) -> Self {
-        self.title = title;
-        self
-    }
-
-    pub(crate) fn title_style(mut self, style: Option<Style>) -> Self {
+    pub fn title_style(mut self, style: Option<Style>) -> Self {
         self.title_style = style;
         self
     }
 
-    pub(crate) fn title_alignment(mut self, align: Option<Alignment>) -> Self {
+    pub fn title_alignment(mut self, align: Option<Alignment>) -> Self {
         self.title_alignment = align;
         self
     }
 
-    pub(crate) fn focus_style(mut self, style: Option<Style>) -> Self {
+    pub fn focus_style(mut self, style: Option<Style>) -> Self {
         if let Some(focus_style) = style {
             self.focus_style = Some(focus_style);
         }
         self
-    }
-}
-
-impl<'a> StatefulWidget for OneDecoration<'a> {
-    type State = WindowState;
-
-    #[allow(clippy::collapsible_else_if)]
-    fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
-        state.area = area;
-        state.inner = self.block.inner(area);
-
-        if state.closeable {
-            state.areas[WindowState::CLOSE] = Rect::new(area.right() - 5, area.top(), 3, 1);
-        } else {
-            state.areas[WindowState::CLOSE] = Rect::default();
-        }
-        if state.moveable {
-            state.areas[WindowState::MOVE] =
-                Rect::new(area.left() + 1, area.top(), area.width - 2, 1);
-        } else {
-            state.areas[WindowState::MOVE] = Rect::default();
-        }
-        if state.resizable {
-            state.areas[WindowState::RESIZE_TOP] = Rect::new(area.left() + 1, area.top(), 0, 1);
-            state.areas[WindowState::RESIZE_RIGHT] =
-                Rect::new(area.right() - 1, area.top() + 1, 1, area.height - 2);
-            state.areas[WindowState::RESIZE_BOTTOM] =
-                Rect::new(area.left() + 1, area.bottom() - 1, area.width - 2, 1);
-            state.areas[WindowState::RESIZE_LEFT] =
-                Rect::new(area.left(), area.top() + 1, 1, area.height - 2);
-            state.areas[WindowState::RESIZE_TOP_LEFT] = Rect::new(area.left(), area.top(), 1, 1);
-            state.areas[WindowState::RESIZE_TOP_RIGHT] =
-                Rect::new(area.right() - 1, area.top(), 1, 1);
-            state.areas[WindowState::RESIZE_BOTTOM_RIGHT] =
-                Rect::new(area.right() - 1, area.bottom() - 1, 1, 1);
-            state.areas[WindowState::RESIZE_BOTTOM_LEFT] =
-                Rect::new(area.left(), area.bottom() - 1, 1, 1);
-        } else {
-            state.areas[WindowState::RESIZE_TOP] = Rect::default();
-            state.areas[WindowState::RESIZE_RIGHT] = Rect::default();
-            state.areas[WindowState::RESIZE_BOTTOM] = Rect::default();
-            state.areas[WindowState::RESIZE_LEFT] = Rect::default();
-            state.areas[WindowState::RESIZE_TOP_LEFT] = Rect::default();
-            state.areas[WindowState::RESIZE_TOP_RIGHT] = Rect::default();
-            state.areas[WindowState::RESIZE_BOTTOM_RIGHT] = Rect::default();
-            state.areas[WindowState::RESIZE_BOTTOM_LEFT] = Rect::default();
-        }
-        state.areas[WindowState::TITLE] = Rect::new(area.left() + 1, area.top(), area.width - 2, 1);
-
-        self.block.render(area, buf);
-
-        let style = if state.focus.is_focused() {
-            if let Some(focus_style) = self.focus_style {
-                focus_style
-            } else if let Some(title_style) = self.title_style {
-                title_style
-            } else {
-                Style::new().black().on_white()
-            }
-        } else {
-            if let Some(title_style) = self.title_style {
-                title_style
-            } else {
-                Style::new().black().on_white()
-            }
-        };
-        let alignment = self.title_alignment.unwrap_or_default();
-        let title = self.title.unwrap_or("%__%))--");
-
-        if let Some(cell) = buf.cell_mut((area.left(), area.top())) {
-            cell.set_symbol("\u{2590}");
-        }
-        fill_buf_area(buf, state.areas[WindowState::TITLE], " ", style);
-        if let Some(cell) = buf.cell_mut((area.right() - 1, area.top())) {
-            cell.set_symbol("\u{258C}");
-        }
-
-        Text::from(title)
-            .style(style)
-            .alignment(alignment)
-            .render(state.areas[WindowState::TITLE], buf);
-
-        Span::from("[\u{2A2F}]").render(state.areas[WindowState::CLOSE], buf);
     }
 }
