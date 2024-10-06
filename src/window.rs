@@ -116,9 +116,25 @@ impl StatefulWidgetRef for Box<dyn Window + 'static> {
     }
 }
 
+impl WindowUserState for Box<dyn WindowUserState + 'static> {}
+
+impl<T: WindowUserState> WindowUserState for Box<T> {}
+
 impl WindowUserState for () {}
 
 impl dyn WindowUserState {
+    /// down cast for Box<dyn WindowUserState
+    pub fn downcast_box_dyn<R: WindowUserState>(&self) -> &R {
+        let first = self.downcast_ref::<Box<dyn WindowUserState>>();
+        first.as_ref().downcast_ref::<R>()
+    }
+
+    /// down cast for Box<dyn WindowUserState
+    pub fn downcast_box_dyn_mut<R: WindowUserState>(&mut self) -> &mut R {
+        let first = self.downcast_mut::<Box<dyn WindowUserState>>();
+        first.as_mut().downcast_mut::<R>()
+    }
+
     /// down cast Any style.
     pub fn downcast_ref<R: WindowUserState>(&self) -> &R {
         if self.type_id() == TypeId::of::<R>() {
@@ -130,7 +146,7 @@ impl dyn WindowUserState {
     }
 
     /// down cast Any style.
-    pub fn downcast_mut<R: WindowUserState>(&mut self) -> &mut R {
+    pub fn downcast_mut<R: Any>(&mut self) -> &mut R {
         if (&*self).type_id() == TypeId::of::<R>() {
             let p: *mut dyn WindowUserState = self;
             unsafe { &mut *(p as *mut R) }

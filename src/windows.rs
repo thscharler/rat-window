@@ -22,16 +22,18 @@ pub struct WindowHandle(usize);
 
 /// Window handler
 #[derive(Debug)]
-pub struct Windows<T>
+pub struct Windows<T, U>
 where
     T: Window,
+    U: WindowUserState,
 {
-    _phantom: PhantomData<T>,
+    _phantom: PhantomData<(T, U)>,
 }
 
-pub struct WindowsState<T>
+pub struct WindowsState<T, U>
 where
     T: Window,
+    U: WindowUserState,
 {
     /// last rendered area for windowing.
     /// __read-only__
@@ -61,18 +63,18 @@ where
     // window handles
     win_handle: BiMap<WindowHandle, usize>,
     // window widget
-    win: Vec<WinStruct<T>>,
+    win: Vec<WinStruct<T, U>>,
 
     // mouse stuff
     mouse: WinMouseFlags,
 }
 
-struct WinStruct<T> {
+struct WinStruct<T, U> {
     win: T,
     // overall window state
     state: Rc<RefCell<WindowState>>,
     // user data
-    user_state: Rc<RefCell<dyn WindowUserState>>,
+    user_state: Rc<RefCell<U>>,
     // frame decoration
     deco: Rc<dyn WindowDeco>,
     // frame decoration styles
@@ -101,9 +103,10 @@ struct WinMouseFlags {
     drag_area: Option<WinMouseArea>,
 }
 
-impl<T> Default for Windows<T>
+impl<T, U> Default for Windows<T, U>
 where
     T: Window,
+    U: WindowUserState,
 {
     fn default() -> Self {
         Self {
@@ -112,20 +115,22 @@ where
     }
 }
 
-impl<T> Windows<T>
+impl<T, U> Windows<T, U>
 where
     T: Window,
+    U: WindowUserState,
 {
     pub fn new() -> Self {
         Self::default()
     }
 }
 
-impl<T> StatefulWidget for Windows<T>
+impl<T, U> StatefulWidget for Windows<T, U>
 where
     T: Window,
+    U: WindowUserState,
 {
-    type State = WindowsState<T>;
+    type State = WindowsState<T, U>;
 
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
         state.area = area;
@@ -179,10 +184,12 @@ where
     }
 }
 
-impl<T> Debug for WindowsState<T>
+impl<T, U> Debug for WindowsState<T, U>
 where
     T: Window,
     T: Debug,
+    U: WindowUserState,
+    U: Debug,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WindowsState")
@@ -196,9 +203,10 @@ where
     }
 }
 
-impl<T> Default for WindowsState<T>
+impl<T, U> Default for WindowsState<T, U>
 where
     T: Window,
+    U: WindowUserState,
 {
     fn default() -> Self {
         Self {
@@ -220,18 +228,20 @@ where
     }
 }
 
-impl<T> HandleEvent<crossterm::event::Event, Regular, Outcome> for WindowsState<T>
+impl<T, U> HandleEvent<crossterm::event::Event, Regular, Outcome> for WindowsState<T, U>
 where
     T: Window,
+    U: WindowUserState,
 {
     fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> Outcome {
         self.handle(event, MouseOnly)
     }
 }
 
-impl<T> HandleEvent<crossterm::event::Event, MouseOnly, Outcome> for WindowsState<T>
+impl<T, U> HandleEvent<crossterm::event::Event, MouseOnly, Outcome> for WindowsState<T, U>
 where
     T: Window,
+    U: WindowUserState,
 {
     fn handle(&mut self, event: &crossterm::event::Event, _qualifier: MouseOnly) -> Outcome {
         match event {
@@ -319,9 +329,10 @@ where
     }
 }
 
-impl<T> WindowsState<T>
+impl<T, U> WindowsState<T, U>
 where
     T: Window,
+    U: WindowUserState,
 {
     pub fn new() -> Self {
         Self::default()
@@ -373,9 +384,10 @@ where
     }
 }
 
-impl<T> WindowsState<T>
+impl<T, U> WindowsState<T, U>
 where
     T: Window,
+    U: WindowUserState,
 {
     /// Get the bounds for the windows coordinate system.
     /// This always starts at 0,0 and extends to
@@ -399,7 +411,7 @@ where
     ///
     /// The builder parameter looks quit impressive, but you want
     /// to use WindowBuilder for that anyway.
-    pub fn show(&mut self, builder: WindowBuilder<T>) -> WindowHandle {
+    pub fn show(&mut self, builder: WindowBuilder<T, U>) -> WindowHandle {
         let handle = self.new_handle();
         let idx = self.win.len();
         self.win_handle
@@ -528,9 +540,10 @@ where
     }
 }
 
-impl<T> WindowsState<T>
+impl<T, U> WindowsState<T, U>
 where
     T: Window,
+    U: WindowUserState,
 {
     pub fn windows(&self) -> impl Iterator<Item = WindowHandle> + '_ {
         self.win_handle.left_values().copied()
@@ -593,9 +606,10 @@ where
     }
 }
 
-impl<T> WindowsState<T>
+impl<T, U> WindowsState<T, U>
 where
     T: Window,
+    U: WindowUserState,
 {
     // construct handle
     fn new_handle(&mut self) -> WindowHandle {
@@ -632,7 +646,7 @@ where
     fn at_hit<R>(
         &mut self,
         pos: Position,
-        f: impl FnOnce(&mut WindowsState<T>, Position, WindowHandle, usize) -> R,
+        f: impl FnOnce(&mut WindowsState<T, U>, Position, WindowHandle, usize) -> R,
     ) -> Option<(WindowHandle, R)> {
         let pos = self.screen_to_window_pos(pos);
 
@@ -667,12 +681,12 @@ where
     }
 }
 
-impl<T: Debug> Debug for WinStruct<T> {
+impl<T: Debug, U: Debug> Debug for WinStruct<T, U> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WinStruct")
             .field("win", &self.win)
             .field("state", &self.state)
-            .field("user_state", &"..dyn..")
+            .field("user_state", &self.user_state)
             .field("frame", &"..dyn..")
             .field("frame_style", &"..dyn..")
             .finish()

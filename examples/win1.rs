@@ -42,7 +42,7 @@ fn main() -> Result<(), anyhow::Error> {
 struct Data {}
 
 struct State {
-    win: WindowsState<Box<dyn Window + 'static>>,
+    win: WindowsState<Box<dyn Window + 'static>, Box<dyn WindowUserState + 'static>>,
 }
 
 fn repaint_windows(
@@ -83,9 +83,11 @@ fn handle_windows(
         ct_event!(keycode press F(2)) => {
             let c = (rand::random::<u8>() % 26 + b'a') as char;
             state.win.show(
-                WindowBuilder::new(MinWin::new().fill(c).boxed())
-                    .user_state(MinWinState::new(format!(" {} ", rand::random::<u8>())))
-                    .area(Rect::new(10, 10, 10, 10)),
+                WindowBuilder::new(
+                    MinWin::new().fill(c).boxed(),
+                    MinWinState::new(format!(" {} ", rand::random::<u8>())).boxed(),
+                )
+                .area(Rect::new(10, 10, 10, 10)),
             );
             Outcome::Changed
         }
@@ -105,8 +107,6 @@ struct MinWin {
 struct MinWinState {
     msg: String,
 }
-
-impl WindowUserState for MinWinState {}
 
 impl MinWin {
     fn new() -> Self {
@@ -140,8 +140,8 @@ impl StatefulWidgetRef for MinWin {
     ) {
         let window_state = window_state.borrow();
 
-        let user_state = user_state.borrow();
-        let user_state = user_state.downcast_ref::<MinWinState>();
+        let mut user_state = user_state.borrow_mut();
+        let user_state = user_state.downcast_box_dyn_mut::<MinWinState>();
 
         fill_buf_area(buf, area, &self.fill.to_string(), Style::default());
 
@@ -153,8 +153,14 @@ impl StatefulWidgetRef for MinWin {
     }
 }
 
+impl WindowUserState for MinWinState {}
+
 impl MinWinState {
-    pub fn new(msg: impl Into<String>) -> Self {
+    fn new(msg: impl Into<String>) -> Self {
         Self { msg: msg.into() }
+    }
+
+    fn boxed(self) -> Box<dyn WindowUserState> {
+        Box::new(self)
     }
 }

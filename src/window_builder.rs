@@ -6,41 +6,44 @@ use std::fmt::{Debug, Formatter};
 use std::rc::Rc;
 
 /// Builder for new windows.
-pub struct WindowBuilder<T>
+pub struct WindowBuilder<T, U>
 where
     T: Window,
+    U: WindowUserState,
 {
     pub(crate) win: T,
     pub(crate) state: Rc<RefCell<WindowState>>,
-    pub(crate) user: Rc<RefCell<dyn WindowUserState>>,
+    pub(crate) user: Rc<RefCell<U>>,
     pub(crate) deco: Option<Rc<dyn WindowDeco>>,
     pub(crate) deco_style: Option<Rc<dyn WindowDecoStyle>>,
 }
 
-impl<T> Debug for WindowBuilder<T>
+impl<T, U> Debug for WindowBuilder<T, U>
 where
     T: Window + Debug,
+    U: WindowUserState + Debug,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WindowBuilder")
             .field("win", &self.win)
             .field("state", &self.state)
-            .field("user", &"..dyn..")
+            .field("user", &self.user)
             .field("deco", &"..dyn..")
             .field("deco_style", &"..dyn..")
             .finish()
     }
 }
 
-impl<T> WindowBuilder<T>
+impl<T, U> WindowBuilder<T, U>
 where
     T: Window,
+    U: WindowUserState,
 {
-    pub fn new(win: T) -> Self {
+    pub fn new(win: T, state: U) -> Self {
         Self {
             win,
             state: Default::default(),
-            user: Rc::new(RefCell::new(())),
+            user: Rc::new(RefCell::new(state)),
             deco: None,
             deco_style: None,
         }
@@ -73,12 +76,6 @@ where
 
     pub fn moveable(self, moveable: bool) -> Self {
         self.state.borrow_mut().moveable = moveable;
-        self
-    }
-
-    pub fn user_state(mut self, state: impl WindowUserState) -> Self {
-        assert_eq!(self.win.state_id(), state.type_id());
-        self.user = Rc::new(RefCell::new(state));
         self
     }
 

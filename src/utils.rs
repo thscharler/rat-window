@@ -1,7 +1,6 @@
 use ratatui::buffer::{Buffer, Cell};
 use ratatui::layout::{Position, Rect};
 use ratatui::prelude::Style;
-use ratatui::style::Stylize;
 
 /// Fill the given area of the buffer.
 pub fn fill_buf_area(buf: &mut Buffer, area: Rect, symbol: &str, style: impl Into<Style>) {
