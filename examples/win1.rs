@@ -1,10 +1,11 @@
 use crate::mini_salsa::{run_ui, setup_logging, MiniSalsaState};
 use log::debug;
-use rat_event::{ct_event, try_flow, Outcome};
+use rat_event::{ct_event, try_flow, HandleEvent, Outcome, Regular};
 use rat_focus::{FocusFlag, HasFocusFlag};
+use rat_window::utils::fill_buf_area;
 use rat_window::{Window, Windows, WindowsState};
 use ratatui::buffer::Buffer;
-use ratatui::layout::Rect;
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::prelude::Widget;
 use ratatui::style::{Style, Stylize};
 use ratatui::widgets::{Block, StatefulWidget};
@@ -38,10 +39,12 @@ fn repaint_windows(
     istate: &mut MiniSalsaState,
     state: &mut State,
 ) -> Result<(), anyhow::Error> {
+    let l1 = Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).split(area);
+
     Windows::new()
         .block(Block::bordered().border_style(Style::default().fg(istate.theme.deepblue[2])))
         .focus_style(Style::new().black().on_red())
-        .render(area, frame.buffer_mut(), &mut state.win);
+        .render(l1[0], frame.buffer_mut(), &mut state.win);
 
     Ok(())
 }
@@ -54,8 +57,10 @@ fn handle_windows(
 ) -> Result<Outcome, anyhow::Error> {
     try_flow!(match event {
         ct_event!(keycode press F(2)) => {
+            let c = (rand::random::<u8>().saturating_sub(161).saturating_add(32)) as char;
             state.win.show_at(
                 Box::new(MinWin {
+                    fill: c,
                     focus: Default::default(),
                     area: Default::default(),
                 }),
@@ -66,11 +71,15 @@ fn handle_windows(
         _ => Outcome::Continue,
     });
 
+    try_flow!(state.win.handle(event, Regular));
+
     Ok(Outcome::Continue)
 }
 
 #[derive(Debug)]
 struct MinWin {
+    pub fill: char,
+
     pub focus: FocusFlag,
     pub area: Rect,
 }
@@ -87,7 +96,6 @@ impl HasFocusFlag for MinWin {
 
 impl Window for MinWin {
     fn title(&self) -> Option<&str> {
-        debug!("title called");
         Some("m i n   w i n")
     }
 
@@ -110,6 +118,7 @@ impl Window for MinWin {
     fn render(&mut self, area: Rect, buf: &mut Buffer) {
         self.area = area;
 
+        fill_buf_area(buf, area, &self.fill.to_string(), Style::default());
         if self.is_focused() {
             "MINWIN".render(area, buf);
         } else {

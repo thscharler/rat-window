@@ -49,6 +49,7 @@ variant_size_differences = "warn"
 ratatui = { version = "0.28", features = ["unstable-rendered-line-info", "unstable-widget-ref"] }
 crossterm = "0.28"
 log = "0.4"
+bimap = "0.6.3"
 
 rat-event = { version = "0.16", path = "../rat-event" }
 rat-focus = { version = "0.12", path = "../rat-focus" }
@@ -56,3 +57,4 @@ rat-focus = { version = "0.12", path = "../rat-focus" }
 [dev-dependencies]
 anyhow = "1.0.82"
 fern = "0.6"
+rand = "0.8"
