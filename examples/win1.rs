@@ -1,17 +1,17 @@
 use crate::mini_salsa::theme::THEME;
 use crate::mini_salsa::{run_ui, setup_logging, MiniSalsaState};
-use crossterm::event::{Event, MouseEvent, MouseEventKind};
+use crossterm::event::{MouseEvent, MouseEventKind};
 use log::debug;
 use rat_event::{ct_event, try_flow, HandleEvent, Outcome, Regular};
 use rat_focus::{FocusFlag, HasFocusFlag};
 use rat_window::deco::{One, OneStyle};
 use rat_window::utils::fill_buf_area;
-use rat_window::{Window, Windows, WindowsState};
+use rat_window::{Window, WindowState, Windows, WindowsState};
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::prelude::Widget;
-use ratatui::style::{Style, Stylize};
-use ratatui::widgets::{Block, BorderType, StatefulWidget};
+use ratatui::style::Style;
+use ratatui::widgets::{Block, BorderType, StatefulWidget, StatefulWidgetRef};
 use ratatui::Frame;
 use std::fmt::Debug;
 
@@ -24,7 +24,7 @@ fn main() -> Result<(), anyhow::Error> {
 
     let mut state = State {
         win: WindowsState::new()
-            .zero(10, 10)
+            // .zero(10, 10)
             .deco(One)
             .deco_style(OneStyle {
                 block: Block::bordered().border_type(BorderType::Rounded),
@@ -51,9 +51,23 @@ fn repaint_windows(
     _istate: &mut MiniSalsaState,
     state: &mut State,
 ) -> Result<(), anyhow::Error> {
-    let l1 = Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).split(area);
+    let layout = Layout::vertical([
+        Constraint::Fill(1), //
+        Constraint::Length(1),
+    ])
+    .split(area);
 
-    Windows::new().render(l1[0], frame.buffer_mut(), &mut state.win);
+    let hlayout = Layout::horizontal([
+        Constraint::Fill(1), //
+        Constraint::Length(15),
+    ])
+    .split(layout[0]);
+
+    // frame.buffer_mut().set_style(hlayout[0], THEME.black(2));
+    fill_buf_area(frame.buffer_mut(), hlayout[0], " ", THEME.black(2));
+    Windows::new().render(hlayout[0], frame.buffer_mut(), &mut state.win);
+
+    // state.win;
 
     Ok(())
 }
@@ -66,14 +80,16 @@ fn handle_windows(
 ) -> Result<Outcome, anyhow::Error> {
     try_flow!(match event {
         ct_event!(keycode press F(2)) => {
-            let c = (rand::random::<u8>().saturating_sub(161).saturating_add(32)) as char;
+            // let c = (rand::random::<u8>().saturating_sub(161).saturating_add(32)) as char;
             state.win.show_at(
-                Box::new(MinWin {
-                    fill: c,
+                MinWin {
+                    fill: 'o',
                     focus: Default::default(),
                     area: Default::default(),
-                }),
-                Rect::new(0, 0, 20, 20),
+                }
+                .boxed(),
+                WindowState::default().title("one".into()),
+                Rect::new(20, 20, 20, 20),
             );
             Outcome::Changed
         }
@@ -81,11 +97,11 @@ fn handle_windows(
     });
 
     match event {
-        Event::Mouse(MouseEvent {
+        crossterm::event::Event::Mouse(MouseEvent {
             kind: MouseEventKind::Moved,
             ..
         }) => {}
-        Event::Mouse(m) => {
+        crossterm::event::Event::Mouse(m) => {
             debug!("*NO FUN {:?} {:?}", m.column, m.row);
         }
         _ => {}
@@ -96,12 +112,23 @@ fn handle_windows(
     Ok(Outcome::Continue)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct MinWin {
     pub fill: char,
 
     pub focus: FocusFlag,
     pub area: Rect,
+}
+
+impl MinWin {
+    #[allow(dead_code)]
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn boxed(self) -> Box<Self> {
+        Box::new(self)
+    }
 }
 
 impl HasFocusFlag for MinWin {
@@ -114,31 +141,14 @@ impl HasFocusFlag for MinWin {
     }
 }
 
-impl Window for MinWin {
-    fn title(&self) -> Option<&str> {
-        Some("m i n   w i n")
-    }
+impl Window for MinWin {}
 
-    fn is_closeable(&self) -> bool {
-        true
-    }
+impl StatefulWidgetRef for MinWin {
+    type State = WindowState;
 
-    fn is_resizable(&self) -> bool {
-        true
-    }
-
-    fn is_moveable(&self) -> bool {
-        true
-    }
-
-    fn is_modal(&self) -> bool {
-        false
-    }
-
-    fn render(&mut self, area: Rect, buf: &mut Buffer) {
-        self.area = area;
-
+    fn render_ref(&self, area: Rect, buf: &mut Buffer, _state: &mut Self::State) {
         fill_buf_area(buf, area, &self.fill.to_string(), Style::default());
+
         if self.is_focused() {
             "MINWIN".render(area, buf);
         } else {

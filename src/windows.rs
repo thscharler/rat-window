@@ -3,17 +3,19 @@ use crate::deco_one::OneStyle;
 use crate::utils::{copy_buffer, fill_buf_area};
 use crate::window_style::{WindowFrame, WindowFrameStyle};
 use crate::{Error, Window, WindowState};
-use anyhow::anyhow;
 use bimap::BiMap;
 use log::debug;
 use rat_event::{ct_event, HandleEvent, MouseOnly, Outcome, Regular};
+use rat_focus::HasFocusFlag;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
 use ratatui::prelude::{StatefulWidget, Style};
+use ratatui::style::Stylize;
 use ratatui::widgets::Block;
 use std::cell::RefCell;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
+use std::ops::DerefMut;
 use std::rc::Rc;
 
 /// Handle returned for an added window. Used as a reference.
@@ -66,12 +68,26 @@ where
     mouse: WinMouseFlags,
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WinMouseArea {
+    Close,
+    Move,
+    TopLeft,
+    Top,
+    TopRight,
+    Right,
+    BottomRight,
+    Bottom,
+    BottomLeft,
+    Left,
+}
+
+#[derive(Debug, Clone, Copy)]
 struct WinMouseFlags {
     drag_base: Option<Rect>,
     drag_zero: Option<Position>,
     drag_win: Option<usize>,
-    drag_area: Option<usize>,
+    drag_area: Option<WinMouseArea>,
 }
 
 impl<T> Default for Windows<T>
@@ -128,10 +144,11 @@ where
             tmp_area.width,
             tmp_area.height,
         ));
+        tmp.set_style(tmp.area, Style::new().on_blue());
+        let tmp = &mut tmp;
+        // let tmp = buf;
 
-        debug!("tmp area {:?}", tmp_area);
-
-        for (((win, win_state), win_area), win_style) in //
+        for (((win, win_state), win_area), (win_frame, win_frame_style)) in //
             state
                 .win
                 .iter_mut()
@@ -139,31 +156,22 @@ where
                 .zip(state.win_area.iter())
                 .zip(state.win_style.iter())
         {
-            win_state.borrow_mut().title = win.title().unwrap_or_default().into();
-            win_state.borrow_mut().closeable = win.is_closeable();
-            win_state.borrow_mut().moveable = win.is_moveable();
-            win_state.borrow_mut().resizable = win.is_resizable();
-            win_state.borrow_mut().modal = win.is_modal();
-
-            // win rect in windows coordinates
-            let win_area_rect = Rect::new(win_area.x, win_area.y, win_area.width, win_area.height);
-
             // Clear out window area
-            fill_buf_area(&mut tmp, win_area_rect, " ", Style::default());
+            fill_buf_area(tmp, *win_area, " ", Style::default());
 
             // decorations
-            let frame = win_style.0.as_ref();
-            let frame_style_clone = win_style.1.clone();
-            let win_state_clone = win_state.clone();
-            frame.render_ref(
-                win_area_rect,
-                &mut tmp,
-                &mut (win_state_clone, frame_style_clone),
+            win_frame.render_ref(
+                *win_area,
+                tmp,
+                &mut (win_state.clone(), win_frame_style.clone()),
             );
 
             // content
-            win.render(win_state.borrow().inner, &mut tmp);
+            let inner = win_state.borrow().inner;
+            win.render_ref(inner, tmp, win_state.borrow_mut().deref_mut());
         }
+
+        debug!("tmp {:?}", tmp);
 
         copy_buffer(tmp, state.zero_offset, area, buf);
     }
@@ -172,6 +180,7 @@ where
 impl<T> Debug for WindowsState<T>
 where
     T: Window,
+    T: Debug,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WindowsState")
@@ -241,12 +250,25 @@ where
                 debug!("** RAW CLICK {} {}", x, y);
                 self.at_hit(Position::new(*x, *y), |w, pos, _handle, idx_win| {
                     let win = w.win_state[idx_win].borrow();
-                    for (idx_area, area) in win.areas.iter().enumerate() {
+
+                    let areas = [
+                        win.area_close,
+                        win.area_move,
+                        win.area_resize_top_left,
+                        win.area_resize_top,
+                        win.area_resize_top_right,
+                        win.area_resize_right,
+                        win.area_resize_bottom_right,
+                        win.area_resize_bottom,
+                        win.area_resize_bottom_left,
+                        win.area_resize_left,
+                    ];
+                    for (idx_area, area) in areas.iter().enumerate() {
                         if area.contains(pos.into()) {
                             w.mouse.drag_zero = Some(pos);
                             w.mouse.drag_base = Some(win.area);
                             w.mouse.drag_win = Some(idx_win);
-                            w.mouse.drag_area = Some(idx_area);
+                            w.mouse.drag_area = Some(idx_area.into());
                             debug!(
                                 "start drag ZERO {:?} WIN-AREA {:?} WIN {:?}",
                                 w.mouse.drag_zero, area, w.mouse.drag_base
@@ -266,17 +288,14 @@ where
 
                 match self.mouse.drag_area {
                     None => Outcome::Continue,
-                    Some(WindowState::MOVE) => {
-                        let pos = self.shift_in_pos(Position::new(*x, *y));
+                    Some(WinMouseArea::Move) => {
+                        let pos = self.screen_to_window_pos(Position::new(*x, *y));
                         let area = &mut self.win_area[win_idx];
                         let zero = self.mouse.drag_zero.expect("zero");
                         let base = self.mouse.drag_base.expect("base");
                         debug!(
                             "dragging area {:?}:: base {:?} + pos {:?} - zero {:?}",
-                            area,
-                            (base.x, base.y),
-                            (pos.x, pos.y),
-                            (zero.x, zero.y)
+                            area, base, pos, zero
                         );
                         area.x = (base.x + pos.x).saturating_sub(zero.x);
                         area.y = (base.y + pos.y).saturating_sub(zero.y);
@@ -332,39 +351,21 @@ where
     /// Show with bounds.
     ///
     /// Bounds are relative to the zero-point.
-    pub fn show_at(&mut self, w: T, bounds: Rect) -> WindowHandle {
+    pub fn show_at(&mut self, window: T, state: WindowState, bounds: Rect) -> WindowHandle {
         let handle = self.new_handle();
         let idx = self.win.len();
 
         self.win_handle
             .insert_no_overwrite(handle, idx)
             .expect("no duplicate");
-        self.win_state.push(Rc::new(RefCell::new(WindowState {
-            area: Default::default(),
-            inner: Default::default(),
-            areas: [Rect::default(); 11],
-            focus: w.focus(),
-            modal: w.is_modal(),
-            closeable: w.is_closeable(),
-            resizable: w.is_resizable(),
-            moveable: w.is_moveable(),
-            title: "".to_string(),
-        })));
+        self.win_state.push(Rc::new(RefCell::new(state)));
         self.win_style.push((
             Rc::clone(&self.default_deco),
             Rc::clone(&self.default_deco_style),
         ));
-        debug!("SHOW WIN {:?}", self.shift_0_in(bounds));
-        self.win_area.push(self.shift_0_in(bounds));
-        self.win.push(w);
+        self.win_area.push(bounds);
+        self.win.push(window);
         handle
-    }
-
-    /// Show.
-    ///
-    /// Fills all the visible area.
-    pub fn show(&mut self, w: T) -> WindowHandle {
-        self.show_at(w, Rect::new(0, 0, self.area.width, self.area.height))
     }
 
     /// Move window at position to the front.
@@ -392,13 +393,13 @@ where
     pub fn try_focus_window(&mut self, h: WindowHandle) -> Result<bool, Error> {
         let idx_win = self.try_handle_idx(h)?;
 
-        let old_focus = self.win[idx_win].focus().get();
+        let old_focus = self.win_state[idx_win].borrow().is_focused();
 
-        for (idx, win) in self.win.iter().enumerate() {
+        for (idx, win) in self.win_state.iter().enumerate() {
             if idx_win == idx {
-                win.focus().set(true);
+                win.borrow().focus().set(true);
             } else {
-                win.focus().set(false);
+                win.borrow().focus().set(false);
             }
         }
 
@@ -471,6 +472,35 @@ impl<T> WindowsState<T>
 where
     T: Window,
 {
+    pub fn windows(&self) -> impl Iterator<Item = WindowHandle> + '_ {
+        self.win_handle.left_values().copied()
+    }
+
+    pub fn window_area(&self, handle: WindowHandle) -> Rect {
+        let idx = self.try_handle_idx(handle).expect("valid idx");
+        self.win_area[idx]
+    }
+
+    pub fn try_window_area(&self, handle: WindowHandle) -> Result<Rect, Error> {
+        let idx = self.try_handle_idx(handle)?;
+        Ok(self.win_area[idx])
+    }
+
+    pub fn window_state(&self, handle: WindowHandle) -> Rc<RefCell<WindowState>> {
+        let idx = self.try_handle_idx(handle).expect("valid idx");
+        self.win_state[idx].clone()
+    }
+
+    pub fn try_window_state(&self, handle: WindowHandle) -> Rc<RefCell<WindowState>> {
+        let idx = self.try_handle_idx(handle).expect("valid idx");
+        self.win_state[idx].clone()
+    }
+}
+
+impl<T> WindowsState<T>
+where
+    T: Window,
+{
     // construct handle
     fn new_handle(&mut self) -> WindowHandle {
         self.max_id += 1;
@@ -508,7 +538,7 @@ where
         pos: Position,
         f: impl FnOnce(&mut WindowsState<T>, Position, WindowHandle, usize) -> R,
     ) -> Option<(WindowHandle, R)> {
-        let pos = self.shift_in_pos(pos);
+        let pos = self.screen_to_window_pos(pos);
 
         // focus and front window
         let mut it = self.win_area.iter().enumerate().rev();
@@ -525,40 +555,40 @@ where
         None
     }
 
-    // transform from 0-based coordinates relative to windows area
-    // into the true windows coordinates which are relative to windows.zero
+    // // transform from 0-based coordinates relative to windows area
+    // // into the true windows coordinates which are relative to windows.zero
+    // //
+    // // this is necessary to enable negative coordinates for windows.
+    // fn shift_0_in(&self, rect: Rect) -> Rect {
+    //     Rect::new(
+    //         rect.x + self.zero_offset.x,
+    //         rect.y + self.zero_offset.y,
+    //         rect.width,
+    //         rect.height,
+    //     )
+    // }
     //
-    // this is necessary to enable negative coordinates for windows.
-    fn shift_0_in(&self, rect: Rect) -> Rect {
-        Rect::new(
-            rect.x + self.zero_offset.x,
-            rect.y + self.zero_offset.y,
-            rect.width,
-            rect.height,
-        )
-    }
-
-    // transform from 0-based coordinates relative to windows area
-    // into the true windows coordinates which are relative to windows.zero
-    //
-    // this is necessary to enable negative coordinates for windows.
-    #[allow(dead_code)]
-    fn shift_0_in_pos(&self, pos: Position) -> Position {
-        let x = pos.x + self.zero_offset.x;
-        let y = pos.y + self.zero_offset.y;
-        Position::new(x, y)
-    }
+    // // transform from 0-based coordinates relative to windows area
+    // // into the true windows coordinates which are relative to windows.zero
+    // //
+    // // this is necessary to enable negative coordinates for windows.
+    // #[allow(dead_code)]
+    // fn shift_0_in_pos(&self, pos: Position) -> Position {
+    //     let x = pos.x + self.zero_offset.x;
+    //     let y = pos.y + self.zero_offset.y;
+    //     Position::new(x, y)
+    // }
 
     // transformation from terminal-space to windows-space
     #[allow(dead_code)]
-    fn shift_in(&self, rect: Rect) -> Rect {
+    pub fn screen_to_window_rect(&self, rect: Rect) -> Rect {
         let x = (rect.x - self.area.x) + self.zero_offset.x;
         let y = (rect.y - self.area.y) + self.zero_offset.y;
         Rect::new(x, y, rect.width, rect.height)
     }
 
     // transformation from terminal-space to windows-space
-    fn shift_in_pos(&self, pos: Position) -> Position {
+    pub fn screen_to_window_pos(&self, pos: Position) -> Position {
         // debug!("{:#?}", anyhow!("fff").backtrace());
         // debug!(
         //     "== shift in {:?} area {:?} zero {:?}",
@@ -567,6 +597,35 @@ where
         let x = (pos.x - self.area.x) + self.zero_offset.x;
         let y = (pos.y - self.area.y) + self.zero_offset.y;
         Position::new(x, y)
+    }
+}
+
+impl From<usize> for WinMouseArea {
+    fn from(value: usize) -> Self {
+        match value {
+            0 => WinMouseArea::Close,
+            1 => WinMouseArea::Move,
+            2 => WinMouseArea::TopLeft,
+            3 => WinMouseArea::Top,
+            4 => WinMouseArea::TopRight,
+            5 => WinMouseArea::Right,
+            6 => WinMouseArea::BottomRight,
+            7 => WinMouseArea::Bottom,
+            8 => WinMouseArea::BottomLeft,
+            9 => WinMouseArea::Left,
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl Default for WinMouseFlags {
+    fn default() -> Self {
+        Self {
+            drag_base: None,
+            drag_zero: None,
+            drag_win: None,
+            drag_area: None,
+        }
     }
 }
 

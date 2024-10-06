@@ -47,44 +47,39 @@ impl StatefulWidgetRef for One {
         }
 
         if win_state.closeable {
-            win_state.areas[WindowState::CLOSE] = Rect::new(area.right() - 5, area.top(), 3, 1);
+            win_state.area_close = Rect::new(area.right() - 5, area.top(), 3, 1);
         } else {
-            win_state.areas[WindowState::CLOSE] = Rect::default();
+            win_state.area_close = Rect::default();
         }
         if win_state.moveable {
-            win_state.areas[WindowState::MOVE] =
-                Rect::new(area.left() + 1, area.top(), area.width - 2, 1);
+            win_state.area_move = Rect::new(area.left() + 1, area.top(), area.width - 2, 1);
         } else {
-            win_state.areas[WindowState::MOVE] = Rect::default();
+            win_state.area_move = Rect::default();
         }
         if win_state.resizable {
-            win_state.areas[WindowState::RESIZE_TOP] = Rect::new(area.left() + 1, area.top(), 0, 1);
-            win_state.areas[WindowState::RESIZE_RIGHT] =
+            win_state.area_resize_top = Rect::new(area.left() + 1, area.top(), 0, 1);
+            win_state.area_resize_right =
                 Rect::new(area.right() - 1, area.top() + 1, 1, area.height - 2);
-            win_state.areas[WindowState::RESIZE_BOTTOM] =
+            win_state.area_resize_bottom =
                 Rect::new(area.left() + 1, area.bottom() - 1, area.width - 2, 1);
-            win_state.areas[WindowState::RESIZE_LEFT] =
-                Rect::new(area.left(), area.top() + 1, 1, area.height - 2);
-            win_state.areas[WindowState::RESIZE_TOP_LEFT] =
-                Rect::new(area.left(), area.top(), 1, 1);
-            win_state.areas[WindowState::RESIZE_TOP_RIGHT] =
-                Rect::new(area.right() - 1, area.top(), 1, 1);
-            win_state.areas[WindowState::RESIZE_BOTTOM_RIGHT] =
+            win_state.area_resize_left = Rect::new(area.left(), area.top() + 1, 1, area.height - 2);
+            win_state.area_resize_top_left = Rect::new(area.left(), area.top(), 1, 1);
+            win_state.area_resize_top_right = Rect::new(area.right() - 1, area.top(), 1, 1);
+            win_state.area_resize_bottom_left = Rect::new(area.left(), area.bottom() - 1, 1, 1);
+            win_state.area_resize_bottom_right =
                 Rect::new(area.right() - 1, area.bottom() - 1, 1, 1);
-            win_state.areas[WindowState::RESIZE_BOTTOM_LEFT] =
-                Rect::new(area.left(), area.bottom() - 1, 1, 1);
         } else {
-            win_state.areas[WindowState::RESIZE_TOP] = Rect::default();
-            win_state.areas[WindowState::RESIZE_RIGHT] = Rect::default();
-            win_state.areas[WindowState::RESIZE_BOTTOM] = Rect::default();
-            win_state.areas[WindowState::RESIZE_LEFT] = Rect::default();
-            win_state.areas[WindowState::RESIZE_TOP_LEFT] = Rect::default();
-            win_state.areas[WindowState::RESIZE_TOP_RIGHT] = Rect::default();
-            win_state.areas[WindowState::RESIZE_BOTTOM_RIGHT] = Rect::default();
-            win_state.areas[WindowState::RESIZE_BOTTOM_LEFT] = Rect::default();
+            win_state.area_resize_top = Rect::default();
+            win_state.area_resize_right = Rect::default();
+            win_state.area_resize_bottom = Rect::default();
+            win_state.area_resize_left = Rect::default();
+            win_state.area_resize_top_left = Rect::default();
+            win_state.area_resize_top_right = Rect::default();
+            win_state.area_resize_bottom_left = Rect::default();
+            win_state.area_resize_bottom_right = Rect::default();
         }
-        win_state.areas[WindowState::TITLE] =
-            Rect::new(area.left() + 1, area.top(), area.width - 2, 1);
+
+        win_state.area_title = Rect::new(area.left() + 1, area.top(), area.width - 2, 1);
 
         win_style.block.clone().render(area, buf);
 
@@ -108,7 +103,7 @@ impl StatefulWidgetRef for One {
         if let Some(cell) = buf.cell_mut((area.left(), area.top())) {
             cell.set_symbol("\u{2590}");
         }
-        fill_buf_area(buf, win_state.areas[WindowState::TITLE], " ", style);
+        fill_buf_area(buf, win_state.area_title, " ", style);
         if let Some(cell) = buf.cell_mut((area.right() - 1, area.top())) {
             cell.set_symbol("\u{258C}");
         }
@@ -116,9 +111,9 @@ impl StatefulWidgetRef for One {
         Text::from(win_state.title.as_str())
             .style(style)
             .alignment(alignment)
-            .render(win_state.areas[WindowState::TITLE], buf);
+            .render(win_state.area_title, buf);
 
-        Span::from("[\u{2A2F}]").render(win_state.areas[WindowState::CLOSE], buf);
+        Span::from("[\u{2A2F}]").render(win_state.area_close, buf);
     }
 }
 
