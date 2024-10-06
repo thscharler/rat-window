@@ -1,19 +1,20 @@
 use crate::mini_salsa::theme::THEME;
 use crate::mini_salsa::{run_ui, setup_logging, MiniSalsaState};
 use crossterm::event::{MouseEvent, MouseEventKind};
-use log::debug;
 use rat_event::{ct_event, try_flow, HandleEvent, Outcome, Regular};
-use rat_focus::{FocusFlag, HasFocusFlag};
+use rat_focus::HasFocusFlag;
 use rat_window::deco::{One, OneStyle};
 use rat_window::utils::fill_buf_area;
-use rat_window::{Window, WindowState, Windows, WindowsState};
+use rat_window::{Window, WindowState, WindowUserState, Windows, WindowsState};
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::prelude::Widget;
 use ratatui::style::Style;
 use ratatui::widgets::{Block, BorderType, StatefulWidget, StatefulWidgetRef};
 use ratatui::Frame;
+use std::cell::RefCell;
 use std::fmt::Debug;
+use std::rc::Rc;
 
 mod mini_salsa;
 
@@ -80,32 +81,19 @@ fn handle_windows(
 ) -> Result<Outcome, anyhow::Error> {
     try_flow!(match event {
         ct_event!(keycode press F(2)) => {
-            // let c = (rand::random::<u8>().saturating_sub(161).saturating_add(32)) as char;
+            let c = (rand::random::<u8>() % 26 + b'a') as char;
             state.win.show_at(
-                MinWin {
-                    fill: 'o',
-                    focus: Default::default(),
-                    area: Default::default(),
-                }
-                .boxed(),
-                WindowState::default().title("one".into()),
+                MinWin { fill: c }.boxed(),
+                WindowState::default().set_title("one".into()),
+                MinWinState {
+                    msg: format!(" {} ", rand::random::<u8>()),
+                },
                 Rect::new(20, 20, 20, 20),
             );
             Outcome::Changed
         }
         _ => Outcome::Continue,
     });
-
-    match event {
-        crossterm::event::Event::Mouse(MouseEvent {
-            kind: MouseEventKind::Moved,
-            ..
-        }) => {}
-        crossterm::event::Event::Mouse(m) => {
-            debug!("*NO FUN {:?} {:?}", m.column, m.row);
-        }
-        _ => {}
-    }
 
     try_flow!(state.win.handle(event, Regular));
 
@@ -114,11 +102,14 @@ fn handle_windows(
 
 #[derive(Debug, Default)]
 struct MinWin {
-    pub fill: char,
-
-    pub focus: FocusFlag,
-    pub area: Rect,
+    fill: char,
 }
+
+struct MinWinState {
+    msg: String,
+}
+
+impl WindowUserState for MinWinState {}
 
 impl MinWin {
     #[allow(dead_code)]
@@ -131,28 +122,28 @@ impl MinWin {
     }
 }
 
-impl HasFocusFlag for MinWin {
-    fn focus(&self) -> FocusFlag {
-        self.focus.clone()
-    }
-
-    fn area(&self) -> Rect {
-        self.area
-    }
-}
-
 impl Window for MinWin {}
 
 impl StatefulWidgetRef for MinWin {
-    type State = WindowState;
+    type State = (Rc<RefCell<WindowState>>, Rc<RefCell<dyn WindowUserState>>);
 
-    fn render_ref(&self, area: Rect, buf: &mut Buffer, _state: &mut Self::State) {
+    fn render_ref(
+        &self,
+        area: Rect,
+        buf: &mut Buffer,
+        (window_state, user_state): &mut Self::State,
+    ) {
+        let window_state = window_state.borrow();
+
+        let user_state = user_state.borrow();
+        let user_state = user_state.downcast_ref::<MinWinState>();
+
         fill_buf_area(buf, area, &self.fill.to_string(), Style::default());
 
-        if self.is_focused() {
-            "MINWIN".render(area, buf);
+        if window_state.is_focused() {
+            (&user_state.msg).render(area, buf);
         } else {
-            "minwin".render(area, buf);
+            (&user_state.msg).render(area, buf);
         }
     }
 }

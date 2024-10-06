@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 /// Trait for a widget that renders the window frame.
 pub trait WindowFrame:
-    StatefulWidgetRef<State = (Rc<RefCell<WindowState>>, Rc<dyn WindowFrameStyle>)>
+    StatefulWidgetRef<State = (Rc<RefCell<WindowState>>, Rc<dyn WindowFrameStyle>)> + Any
 {
 }
 
@@ -18,6 +18,18 @@ impl dyn WindowFrameStyle {
     pub fn downcast_ref<R: 'static>(&self) -> &R {
         if self.type_id() == TypeId::of::<R>() {
             let p: *const dyn WindowFrameStyle = self;
+            unsafe { &*(p as *const R) }
+        } else {
+            panic!("wrong type")
+        }
+    }
+}
+
+impl dyn WindowFrame {
+    /// down cast Any style.
+    pub fn downcast_ref<R: 'static>(&self) -> &R {
+        if self.type_id() == TypeId::of::<R>() {
+            let p: *const dyn WindowFrame = self;
             unsafe { &*(p as *const R) }
         } else {
             panic!("wrong type")

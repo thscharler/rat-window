@@ -2,20 +2,17 @@ use crate::deco::One;
 use crate::deco_one::OneStyle;
 use crate::utils::{copy_buffer, fill_buf_area};
 use crate::window_style::{WindowFrame, WindowFrameStyle};
-use crate::{Error, Window, WindowState};
+use crate::{Error, Window, WindowState, WindowUserState};
 use bimap::BiMap;
-use log::debug;
 use rat_event::{ct_event, HandleEvent, MouseOnly, Outcome, Regular};
 use rat_focus::HasFocusFlag;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
 use ratatui::prelude::{StatefulWidget, Style};
-use ratatui::style::Stylize;
 use ratatui::widgets::Block;
 use std::cell::RefCell;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
-use std::ops::DerefMut;
 use std::rc::Rc;
 
 /// Handle returned for an added window. Used as a reference.
@@ -52,20 +49,25 @@ where
 
     // max handle
     max_id: usize,
-
     // window handles
     win_handle: BiMap<WindowHandle, usize>,
     // window widget
-    win: Vec<T>,
-    // areas. x,y have zero added.
-    win_area: Vec<Rect>,
-    // other window state
-    win_state: Vec<Rc<RefCell<WindowState>>>,
-    // window style
-    win_style: Vec<(Rc<dyn WindowFrame>, Rc<dyn WindowFrameStyle>)>,
+    win: Vec<WinStruct<T>>,
 
     // mouse stuff
     mouse: WinMouseFlags,
+}
+
+struct WinStruct<T> {
+    win: T,
+    // overall window state
+    state: Rc<RefCell<WindowState>>,
+    // user data
+    user_state: Rc<RefCell<dyn WindowUserState>>,
+    // frame decoration
+    frame: Rc<dyn WindowFrame>,
+    // frame decoration styles
+    frame_style: Rc<dyn WindowFrameStyle>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -121,21 +123,19 @@ where
 
         // necessary buffer
         let mut tmp_area: Option<Rect> = None;
-        let mut it = state.win_area.iter();
+        let mut it = state.win.iter();
         loop {
-            let Some(area) = it.next() else {
+            let Some(win) = it.next() else {
                 break;
             };
 
             if let Some(tmp_area) = tmp_area.as_mut() {
-                *tmp_area = tmp_area.union(*area);
+                *tmp_area = tmp_area.union(win.state.borrow().area);
             } else {
-                tmp_area = Some(*area);
+                tmp_area = Some(win.state.borrow().area);
             }
-            debug!("build tmp_area {:?} -> {:?}", area, tmp_area);
         }
         let tmp_area = tmp_area.unwrap_or_default();
-        debug!("final tmp_area {:?}", tmp_area);
 
         // buffer is constructed with windows coordinates
         let mut tmp = Buffer::empty(Rect::new(
@@ -144,34 +144,27 @@ where
             tmp_area.width,
             tmp_area.height,
         ));
-        tmp.set_style(tmp.area, Style::new().on_blue());
         let tmp = &mut tmp;
-        // let tmp = buf;
 
-        for (((win, win_state), win_area), (win_frame, win_frame_style)) in //
-            state
-                .win
-                .iter_mut()
-                .zip(state.win_state.iter())
-                .zip(state.win_area.iter())
-                .zip(state.win_style.iter())
+        for WinStruct {
+            win,
+            state: win_state,
+            user_state: win_user_state,
+            frame: win_frame,
+            frame_style: win_frame_style,
+        } in state.win.iter()
         {
             // Clear out window area
-            fill_buf_area(tmp, *win_area, " ", Style::default());
+            fill_buf_area(tmp, win_state.borrow().area, " ", Style::default());
 
             // decorations
-            win_frame.render_ref(
-                *win_area,
-                tmp,
-                &mut (win_state.clone(), win_frame_style.clone()),
-            );
+            let area = win_state.borrow().area;
+            win_frame.render_ref(area, tmp, &mut (win_state.clone(), win_frame_style.clone()));
 
             // content
             let inner = win_state.borrow().inner;
-            win.render_ref(inner, tmp, win_state.borrow_mut().deref_mut());
+            win.render_ref(inner, tmp, &mut (win_state.clone(), win_user_state.clone()));
         }
-
-        debug!("tmp {:?}", tmp);
 
         copy_buffer(tmp, state.zero_offset, area, buf);
     }
@@ -189,9 +182,6 @@ where
             .field("max_id", &self.max_id)
             .field("win_handle", &self.win_handle)
             .field("win", &self.win)
-            .field("win_area", &self.win_area)
-            .field("win_state", &self.win_state)
-            .field("win_style", &"..dyn something")
             .field("mouse", &self.mouse)
             .finish()
     }
@@ -216,9 +206,6 @@ where
             max_id: 0,
             win_handle: Default::default(),
             win: vec![],
-            win_area: vec![],
-            win_state: vec![],
-            win_style: vec![],
             mouse: Default::default(),
         }
     }
@@ -247,9 +234,8 @@ where
                 }
 
                 // Test for some draggable area.
-                debug!("** RAW CLICK {} {}", x, y);
-                self.at_hit(Position::new(*x, *y), |w, pos, _handle, idx_win| {
-                    let win = w.win_state[idx_win].borrow();
+                self.at_hit(Position::new(*x, *y), |windows, pos, _handle, idx_win| {
+                    let win = windows.win[idx_win].state.borrow();
 
                     let areas = [
                         win.area_close,
@@ -265,14 +251,10 @@ where
                     ];
                     for (idx_area, area) in areas.iter().enumerate() {
                         if area.contains(pos.into()) {
-                            w.mouse.drag_zero = Some(pos);
-                            w.mouse.drag_base = Some(win.area);
-                            w.mouse.drag_win = Some(idx_win);
-                            w.mouse.drag_area = Some(idx_area.into());
-                            debug!(
-                                "start drag ZERO {:?} WIN-AREA {:?} WIN {:?}",
-                                w.mouse.drag_zero, area, w.mouse.drag_base
-                            );
+                            windows.mouse.drag_zero = Some(pos);
+                            windows.mouse.drag_base = Some(win.area);
+                            windows.mouse.drag_win = Some(idx_win);
+                            windows.mouse.drag_area = Some(idx_area.into());
                             break;
                         }
                     }
@@ -281,7 +263,6 @@ where
                 r
             }
             ct_event!(mouse drag Left for x,y) => 'f: {
-                debug!("** RAW DRAG {} {}", x, y);
                 let Some(win_idx) = self.mouse.drag_win else {
                     break 'f Outcome::Continue;
                 };
@@ -290,16 +271,13 @@ where
                     None => Outcome::Continue,
                     Some(WinMouseArea::Move) => {
                         let pos = self.screen_to_window_pos(Position::new(*x, *y));
-                        let area = &mut self.win_area[win_idx];
                         let zero = self.mouse.drag_zero.expect("zero");
                         let base = self.mouse.drag_base.expect("base");
-                        debug!(
-                            "dragging area {:?}:: base {:?} + pos {:?} - zero {:?}",
-                            area, base, pos, zero
-                        );
-                        area.x = (base.x + pos.x).saturating_sub(zero.x);
-                        area.y = (base.y + pos.y).saturating_sub(zero.y);
-                        debug!("after dragging {:?}", area);
+
+                        let mut state = self.win[win_idx].state.borrow_mut();
+                        state.area.x = (base.x + pos.x).saturating_sub(zero.x);
+                        state.area.y = (base.y + pos.y).saturating_sub(zero.y);
+
                         Outcome::Changed
                     }
                     _ => Outcome::Continue,
@@ -351,20 +329,30 @@ where
     /// Show with bounds.
     ///
     /// Bounds are relative to the zero-point.
-    pub fn show_at(&mut self, window: T, state: WindowState, bounds: Rect) -> WindowHandle {
+    pub fn show_at<U: WindowUserState>(
+        &mut self,
+        window: T,
+        state: WindowState,
+        user: U,
+        bounds: Rect,
+    ) -> WindowHandle {
         let handle = self.new_handle();
         let idx = self.win.len();
-
         self.win_handle
             .insert_no_overwrite(handle, idx)
             .expect("no duplicate");
-        self.win_state.push(Rc::new(RefCell::new(state)));
-        self.win_style.push((
-            Rc::clone(&self.default_deco),
-            Rc::clone(&self.default_deco_style),
-        ));
-        self.win_area.push(bounds);
-        self.win.push(window);
+
+        let mut state = state;
+        state.area = bounds;
+
+        self.win.push(WinStruct {
+            win: window,
+            state: Rc::new(RefCell::new(state)),
+            user_state: Rc::new(RefCell::new(user)),
+            frame: Rc::clone(&self.default_deco),
+            frame_style: Rc::clone(&self.default_deco_style),
+        });
+
         handle
     }
 
@@ -393,13 +381,13 @@ where
     pub fn try_focus_window(&mut self, h: WindowHandle) -> Result<bool, Error> {
         let idx_win = self.try_handle_idx(h)?;
 
-        let old_focus = self.win_state[idx_win].borrow().is_focused();
+        let old_focus = self.win[idx_win].state.borrow().is_focused();
 
-        for (idx, win) in self.win_state.iter().enumerate() {
+        for (idx, win) in self.win.iter().enumerate() {
             if idx_win == idx {
-                win.borrow().focus().set(true);
+                win.state.borrow().focus().set(true);
             } else {
-                win.borrow().focus().set(false);
+                win.state.borrow().focus().set(false);
             }
         }
 
@@ -439,9 +427,6 @@ where
             .ok_or(Error::InvalidHandle)?;
 
         let win = self.win.remove(idx_win);
-        let area = self.win_area.remove(idx_win);
-        let state = self.win_state.remove(idx_win);
-        let style = self.win_style.remove(idx_win);
 
         // correct handle mappings, shift left
         for cor in idx_win + 1..=max_idx {
@@ -453,9 +438,6 @@ where
 
         // reinstate
         self.win.push(win);
-        self.win_area.push(area);
-        self.win_state.push(state);
-        self.win_style.push(style);
 
         self.win_handle
             .insert_no_overwrite(h, max_idx)
@@ -476,24 +458,60 @@ where
         self.win_handle.left_values().copied()
     }
 
-    pub fn window_area(&self, handle: WindowHandle) -> Rect {
+    pub fn window(&self, handle: WindowHandle) -> &T {
         let idx = self.try_handle_idx(handle).expect("valid idx");
-        self.win_area[idx]
+        &self.win[idx].win
     }
 
-    pub fn try_window_area(&self, handle: WindowHandle) -> Result<Rect, Error> {
+    pub fn try_window(&self, handle: WindowHandle) -> Result<&T, Error> {
         let idx = self.try_handle_idx(handle)?;
-        Ok(self.win_area[idx])
+        Ok(&self.win[idx].win)
     }
 
     pub fn window_state(&self, handle: WindowHandle) -> Rc<RefCell<WindowState>> {
         let idx = self.try_handle_idx(handle).expect("valid idx");
-        self.win_state[idx].clone()
+        self.win[idx].state.clone()
     }
 
-    pub fn try_window_state(&self, handle: WindowHandle) -> Rc<RefCell<WindowState>> {
+    pub fn try_window_state(
+        &self,
+        handle: WindowHandle,
+    ) -> Result<Rc<RefCell<WindowState>>, Error> {
+        let idx = self.try_handle_idx(handle)?;
+        Ok(self.win[idx].state.clone())
+    }
+
+    pub fn user_state(&self, handle: WindowHandle) -> Rc<RefCell<dyn WindowUserState>> {
         let idx = self.try_handle_idx(handle).expect("valid idx");
-        self.win_state[idx].clone()
+        self.win[idx].user_state.clone()
+    }
+
+    pub fn try_user_state(
+        &self,
+        handle: WindowHandle,
+    ) -> Result<Rc<RefCell<dyn WindowUserState>>, Error> {
+        let idx = self.try_handle_idx(handle)?;
+        Ok(self.win[idx].user_state.clone())
+    }
+
+    pub fn frame(&self, handle: WindowHandle) -> Rc<dyn WindowFrame> {
+        let idx = self.try_handle_idx(handle).expect("valid idx");
+        self.win[idx].frame.clone()
+    }
+
+    pub fn try_frame(&self, handle: WindowHandle) -> Result<Rc<dyn WindowFrame>, Error> {
+        let idx = self.try_handle_idx(handle)?;
+        Ok(self.win[idx].frame.clone())
+    }
+
+    pub fn frame_style(&self, handle: WindowHandle) -> Rc<dyn WindowFrameStyle> {
+        let idx = self.try_handle_idx(handle).expect("valid idx");
+        self.win[idx].frame_style.clone()
+    }
+
+    pub fn try_frame_style(&self, handle: WindowHandle) -> Result<Rc<dyn WindowFrameStyle>, Error> {
+        let idx = self.try_handle_idx(handle)?;
+        Ok(self.win[idx].frame_style.clone())
     }
 }
 
@@ -541,12 +559,12 @@ where
         let pos = self.screen_to_window_pos(pos);
 
         // focus and front window
-        let mut it = self.win_area.iter().enumerate().rev();
+        let mut it = self.win.iter().enumerate().rev();
         loop {
-            let Some((idx_win, win_area)) = it.next() else {
+            let Some((idx_win, win)) = it.next() else {
                 break;
             };
-            if win_area.contains(pos) {
+            if win.state.borrow().area.contains(pos) {
                 let handle = self.idx_handle(idx_win);
                 let r = f(self, pos, handle, idx_win);
                 return Some((handle, r));
@@ -589,14 +607,21 @@ where
 
     // transformation from terminal-space to windows-space
     pub fn screen_to_window_pos(&self, pos: Position) -> Position {
-        // debug!("{:#?}", anyhow!("fff").backtrace());
-        // debug!(
-        //     "== shift in {:?} area {:?} zero {:?}",
-        //     pos, self.area, self.zero_offset
-        // );
         let x = (pos.x - self.area.x) + self.zero_offset.x;
         let y = (pos.y - self.area.y) + self.zero_offset.y;
         Position::new(x, y)
+    }
+}
+
+impl<T: Debug> Debug for WinStruct<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WinStruct")
+            .field("win", &self.win)
+            .field("state", &self.state)
+            .field("user_state", &"..dyn..")
+            .field("frame", &"..dyn..")
+            .field("frame_style", &"..dyn..")
+            .finish()
     }
 }
 
