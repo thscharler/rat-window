@@ -1,6 +1,5 @@
 use crate::deco::One;
-use crate::deco_one::OneStyle;
-use crate::utils::{copy_buffer, fill_buf_area};
+use crate::utils::copy_buffer;
 use crate::window_deco::{WindowDeco, WindowDecoStyle};
 use crate::{Error, Window, WindowBuilder, WindowState, WindowUserState};
 use bimap::BiMap;
@@ -56,7 +55,6 @@ where
     /// default decorations
     /// __read+write__
     pub default_deco: Rc<dyn WindowDeco>,
-    // pub default_deco_style: Rc<dyn WindowDecoStyle>,
 
     // max handle
     max_id: usize,
@@ -77,8 +75,6 @@ struct WinStruct<T, U> {
     user_state: Rc<RefCell<U>>,
     // frame decoration
     deco: Rc<dyn WindowDeco>,
-    // frame decoration styles
-    // deco_style: Rc<dyn WindowDecoStyle>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -184,7 +180,6 @@ where
             state: win_state,
             user_state: win_user_state,
             deco: win_deco,
-            // deco_style: win_frame_style,
         } in state.win.iter()
         {
             // Find window styles.
@@ -238,13 +233,6 @@ where
             area: Default::default(),
             zero_offset: Default::default(),
             default_deco: Rc::new(One),
-            // default_deco_style: Rc::new(OneStyle {
-            //     block: Block::bordered(),
-            //     title_style: None,
-            //     title_alignment: None,
-            //     focus_style: None,
-            //     ..Default::default()
-            // }),
             max_id: 0,
             win_handle: Default::default(),
             win: vec![],
@@ -377,14 +365,8 @@ where
     }
 
     /// Default window decorations.
-    pub fn deco(
-        mut self,
-        deco: impl WindowDeco + 'static,
-        // style: impl WindowDecoStyle + 'static,
-    ) -> Self {
-        // assert_eq!(deco.style_id(), style.type_id());
+    pub fn deco(mut self, deco: impl WindowDeco + 'static) -> Self {
         self.default_deco = Rc::new(deco);
-        // self.default_deco_style = Rc::new(style);
         self
     }
 
@@ -392,21 +374,13 @@ where
     /// Doesn't change the default, use deco for that.
     ///
     /// Changes only windows that have the same deco/style type-id.
-    pub fn change_deco(
-        &mut self,
-        deco: impl WindowDeco + 'static,
-        // style: impl WindowDecoStyle + 'static,
-    ) {
+    pub fn change_deco(&mut self, deco: impl WindowDeco + 'static) {
         let new_deco = Rc::new(deco);
-        // let new_style = Rc::new(style);
 
         for w in self.win.iter_mut() {
             if w.deco.type_id() == new_deco.type_id() {
                 w.deco = new_deco.clone();
             }
-            // if w.deco_style.type_id() == new_style.type_id() {
-            //     w.deco_style = new_style.clone();
-            // }
         }
     }
 }
@@ -450,9 +424,6 @@ where
             state: builder.state,
             user_state: builder.user,
             deco: builder.deco.unwrap_or(self.default_deco.clone()),
-            // deco_style: builder
-            //     .deco_style
-            //     .unwrap_or(self.default_deco_style.clone()),
         };
 
         // some sensible defaults...
@@ -621,16 +592,6 @@ where
         let idx = self.try_handle_idx(handle)?;
         Ok(self.win[idx].deco.clone())
     }
-
-    // pub fn frame_style(&self, handle: WindowHandle) -> Rc<dyn WindowDecoStyle> {
-    //     let idx = self.try_handle_idx(handle).expect("valid idx");
-    //     self.win[idx].deco_style.clone()
-    // }
-    //
-    // pub fn try_frame_style(&self, handle: WindowHandle) -> Result<Rc<dyn WindowDecoStyle>, Error> {
-    //     let idx = self.try_handle_idx(handle)?;
-    //     Ok(self.win[idx].deco_style.clone())
-    // }
 }
 
 impl<T, U> WindowsState<T, U>
