@@ -3,14 +3,13 @@ name = "rat-window"
 version = "0.1.0"
 edition = "2021"
 authors = ["thscharler <thscharler@gmail.com>"]
-description = ""
+description = "windows in the terminal with ratatui"
 license = "MIT/Apache-2.0"
-repository = ""
+repository = "https://github.com/thscharler/rat-window.git"
 readme = "readme.md"
 keywords = ["ratatui", "widget"]
 categories = ["command-line-interface"]
 exclude = [".idea/*", ".gitignore", "textarea.gif"]
-
 
 
 [lints.rust]
