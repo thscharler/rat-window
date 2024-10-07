@@ -1,6 +1,7 @@
 use std::fmt::{Display, Formatter};
 
 mod box_dyn;
+mod box_dyn_event;
 mod deco_layout;
 mod deco_one;
 mod window;
@@ -10,6 +11,7 @@ mod window_state;
 mod windows;
 
 pub use box_dyn::*;
+pub use box_dyn_event::*;
 pub use window::*;
 pub use window_builder::*;
 pub use window_state::*;

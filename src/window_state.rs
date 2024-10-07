@@ -1,4 +1,4 @@
-use rat_focus::{FocusFlag, HasFocusFlag};
+use rat_focus::FocusFlag;
 use ratatui::layout::Rect;
 
 #[derive(Debug)]
@@ -87,16 +87,6 @@ impl Default for WindowState {
             moveable: true,
             focus: Default::default(),
         }
-    }
-}
-
-impl HasFocusFlag for WindowState {
-    fn focus(&self) -> FocusFlag {
-        self.focus.clone()
-    }
-
-    fn area(&self) -> Rect {
-        self.area
     }
 }
 

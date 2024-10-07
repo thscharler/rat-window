@@ -3,12 +3,13 @@ use crate::utils::copy_buffer;
 use crate::window_deco::{WindowDeco, WindowDecoStyle};
 use crate::{Error, Window, WindowBuilder, WindowState, WindowUserState};
 use bimap::BiMap;
-use rat_event::{ct_event, HandleEvent, MouseOnly, Outcome, Regular};
-use rat_focus::HasFocusFlag;
+use rat_event::{ct_event, flow, HandleEvent, MouseOnly, Outcome, Regular};
+use rat_focus::{ContainerFlag, FocusBuilder, HasFocus, HasFocusFlag};
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
 use ratatui::prelude::StatefulWidget;
 use std::any::Any;
+use std::cmp::max;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::rc::Rc;
@@ -54,6 +55,9 @@ where
     /// default decorations
     /// __read+write__
     pub default_deco: Rc<dyn WindowDeco>,
+
+    /// is the complete windows widget focused?
+    pub focus: ContainerFlag,
 
     // max handle
     max_id: usize,
@@ -232,6 +236,7 @@ where
             area: Default::default(),
             zero_offset: Default::default(),
             default_deco: Rc::new(One),
+            focus: Default::default(),
             max_id: 0,
             win_handle: Default::default(),
             win: vec![],
@@ -240,14 +245,54 @@ where
     }
 }
 
+impl<T, U> HasFocus for WindowsState<T, U>
+where
+    T: Window<U>,
+    U: WindowUserState,
+    U: HasFocus,
+{
+    fn build(&self, builder: &mut FocusBuilder) {
+        for WinStruct { state, user, .. } in self.win.iter() {
+            if state.focus.is_focused() {
+                builder.container(user);
+            }
+        }
+    }
+
+    fn container(&self) -> Option<ContainerFlag> {
+        Some(self.focus.clone())
+    }
+
+    fn area(&self) -> Rect {
+        self.area
+    }
+}
+
 impl<T, U> HandleEvent<crossterm::event::Event, Regular, Outcome> for WindowsState<T, U>
 where
     T: Window<U>,
     U: WindowUserState,
-    // U: HandleEvent<crossterm::event::Event, Regular, Outcome>,
+    U: HasFocus,
+    U: HandleEvent<crossterm::event::Event, Regular, Outcome>,
+    U: HandleEvent<crossterm::event::Event, MouseOnly, Outcome>,
 {
     fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> Outcome {
-        self.handle(event, MouseOnly)
+        flow!(self.handle(event, MouseOnly));
+
+        flow!({
+            let mut r = Outcome::Continue;
+            //if self.is_focused() {
+            for WinStruct { state, user, .. } in self.win.iter_mut() {
+                if state.focus.is_focused() {
+                    let u = user.handle(event, Regular);
+                    r = max(r, u);
+                }
+            }
+            //}
+            r
+        });
+
+        Outcome::Continue
     }
 }
 
@@ -255,10 +300,10 @@ impl<T, U> HandleEvent<crossterm::event::Event, MouseOnly, Outcome> for WindowsS
 where
     T: Window<U>,
     U: WindowUserState,
-    // U: HandleEvent<crossterm::event::Event, Regular, Outcome>,
+    U: HandleEvent<crossterm::event::Event, MouseOnly, Outcome>,
 {
     fn handle(&mut self, event: &crossterm::event::Event, _qualifier: MouseOnly) -> Outcome {
-        match event {
+        flow!(match event {
             ct_event!(mouse down Left for x,y) => {
                 let mut r = Outcome::Continue;
                 // focus and front window
@@ -341,7 +386,14 @@ where
                 Outcome::Continue
             }
             _ => Outcome::Continue,
+        });
+
+        let mut r = Outcome::Continue;
+        for WinStruct { user, .. } in self.win.iter_mut() {
+            let u = user.handle(event, MouseOnly);
+            r = max(r, u);
         }
+        r
     }
 }
 
@@ -466,16 +518,19 @@ where
 
     /// Focus the given window.
     /// Doesn't move the window to the front. Use to_front... for that.
+    ///
+    /// Doesn't focus the first widget in the window.
+    /// Use Focus::first_container(windows)
     pub fn try_focus_window(&mut self, h: WindowHandle) -> Result<bool, Error> {
         let idx_win = self.try_handle_idx(h)?;
 
-        let old_focus = self.win[idx_win].state.is_focused();
+        let old_focus = self.win[idx_win].state.focus.is_focused();
 
         for (idx, win) in self.win.iter().enumerate() {
             if idx_win == idx {
-                win.state.focus().set(true);
+                win.state.focus.set(true);
             } else {
-                win.state.focus().set(false);
+                win.state.focus.set(false);
             }
         }
 
