@@ -1,9 +1,9 @@
 use crate::deco::One;
 use crate::utils::copy_buffer;
 use crate::window_deco::{WindowDeco, WindowDecoStyle};
-use crate::{Error, Window, WindowBuilder, WindowState, WindowUserState};
+use crate::{Error, Window, WindowBuilder, WindowState, WindowSysState};
 use bimap::BiMap;
-use rat_event::{ct_event, flow, HandleEvent, MouseOnly, Outcome, Regular};
+use rat_event::{ct_event, HandleEvent, MouseOnly, Outcome, Regular};
 use rat_focus::{ContainerFlag, FocusBuilder, HasFocus, HasFocusFlag};
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
@@ -20,8 +20,8 @@ pub struct WindowHandle(usize);
 /// Window rendering.
 pub struct Windows<T, U>
 where
-    T: Window<U>,
-    U: WindowUserState,
+    T: Window<State = U>,
+    U: WindowState,
 {
     _phantom: PhantomData<(T, U)>,
     // deco styles per deco
@@ -31,8 +31,8 @@ where
 /// State for the Windows widget.
 pub struct WindowsState<T, U>
 where
-    T: Window<U>,
-    U: WindowUserState,
+    T: Window<State = U>,
+    U: WindowState,
 {
     /// last rendered area for windowing.
     /// __read-only__
@@ -103,8 +103,8 @@ struct WinMouseFlags {
 
 impl<T, U> Debug for Windows<T, U>
 where
-    T: Window<U>,
-    U: WindowUserState,
+    T: Window<State = U>,
+    U: WindowState,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Windows")
@@ -115,8 +115,8 @@ where
 
 impl<T, U> Default for Windows<T, U>
 where
-    T: Window<U>,
-    U: WindowUserState,
+    T: Window<State = U>,
+    U: WindowState,
 {
     fn default() -> Self {
         Self {
@@ -128,8 +128,8 @@ where
 
 impl<T, U> Windows<T, U>
 where
-    T: Window<U>,
-    U: WindowUserState,
+    T: Window<State = U>,
+    U: WindowState,
 {
     pub fn new() -> Self {
         Self::default()
@@ -146,8 +146,8 @@ where
 
 impl<T, U> StatefulWidget for Windows<T, U>
 where
-    T: Window<U>,
-    U: WindowUserState,
+    T: Window<State = U>,
+    U: WindowState,
 {
     type State = WindowsState<T, U>;
 
@@ -204,9 +204,9 @@ where
 
 impl<T, U> Debug for WindowsState<T, U>
 where
-    T: Window<U>,
+    T: Window<State = U>,
     T: Debug,
-    U: WindowUserState,
+    U: WindowState,
     U: Debug,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -223,8 +223,8 @@ where
 
 impl<T, U> Default for WindowsState<T, U>
 where
-    T: Window<U>,
-    U: WindowUserState,
+    T: Window<State = U>,
+    U: WindowState,
 {
     fn default() -> Self {
         Self {
@@ -242,8 +242,8 @@ where
 
 impl<T, U> HasFocus for WindowsState<T, U>
 where
-    T: Window<U>,
-    U: WindowUserState,
+    T: Window<State = U>,
+    U: WindowState,
     U: HasFocus,
 {
     fn build(&self, builder: &mut FocusBuilder) {
@@ -265,40 +265,39 @@ where
 
 impl<T, U> HandleEvent<crossterm::event::Event, Regular, Outcome> for WindowsState<T, U>
 where
-    T: Window<U>,
-    U: WindowUserState,
+    T: Window<State = U>,
+    U: WindowState,
     U: HasFocus,
     U: HandleEvent<crossterm::event::Event, Regular, Outcome>,
     U: HandleEvent<crossterm::event::Event, MouseOnly, Outcome>,
 {
     fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> Outcome {
-        flow!(self.handle(event, MouseOnly));
+        // only mouse
+        let r0 = self.handle(event, MouseOnly);
 
-        flow!({
-            let mut r = Outcome::Continue;
-            if self.is_focused() {
-                for WinStruct { user, .. } in self.win.iter_mut() {
-                    if user.window().focus.is_focused() {
-                        let u = user.handle(event, Regular);
-                        r = max(r, u);
-                    }
+        // forward to focus
+        let mut r1 = Outcome::Continue;
+        if self.is_focused() {
+            for WinStruct { user, .. } in self.win.iter_mut() {
+                if user.window().focus.is_focused() {
+                    let u = user.handle(event, Regular);
+                    r1 = max(r1, u);
                 }
             }
-            r
-        });
+        }
 
-        Outcome::Continue
+        max(r0, r1)
     }
 }
 
 impl<T, U> HandleEvent<crossterm::event::Event, MouseOnly, Outcome> for WindowsState<T, U>
 where
-    T: Window<U>,
-    U: WindowUserState,
+    T: Window<State = U>,
+    U: WindowState,
     U: HandleEvent<crossterm::event::Event, MouseOnly, Outcome>,
 {
     fn handle(&mut self, event: &crossterm::event::Event, _qualifier: MouseOnly) -> Outcome {
-        flow!(match event {
+        let r0 = match event {
             ct_event!(mouse down Left for x,y) => {
                 let mut r = Outcome::Continue;
                 // focus and front window
@@ -381,21 +380,22 @@ where
                 Outcome::Continue
             }
             _ => Outcome::Continue,
-        });
+        };
 
-        let mut r = Outcome::Continue;
+        let mut r1 = Outcome::Continue;
         for WinStruct { user, .. } in self.win.iter_mut() {
             let u = user.handle(event, MouseOnly);
-            r = max(r, u);
+            r1 = max(r1, u);
         }
-        r
+
+        max(r0, r1)
     }
 }
 
 impl<T, U> WindowsState<T, U>
 where
-    T: Window<U>,
-    U: WindowUserState,
+    T: Window<State = U>,
+    U: WindowState,
 {
     pub fn new() -> Self {
         Self::default()
@@ -421,8 +421,8 @@ where
 
 impl<T, U> WindowsState<T, U>
 where
-    T: Window<U>,
-    U: WindowUserState,
+    T: Window<State = U>,
+    U: WindowState,
 {
     /// Get the bounds for the windows coordinate system.
     /// This always starts at 0,0 and extends to
@@ -574,8 +574,8 @@ where
 
 impl<T, U> WindowsState<T, U>
 where
-    T: Window<U>,
-    U: WindowUserState,
+    T: Window<State = U>,
+    U: WindowState,
 {
     /// Iterate window handles.
     pub fn windows(&self) -> impl Iterator<Item = WindowHandle> + '_ {
@@ -603,13 +603,13 @@ where
     /// __Panic__
     ///
     /// Panics for an invalid handle.
-    pub fn find_window_state(&self, handle: WindowHandle) -> &WindowState {
+    pub fn find_window_state(&self, handle: WindowHandle) -> &WindowSysState {
         let idx = self.try_handle_idx(handle).expect("valid idx");
         &self.win[idx].user.window()
     }
 
     /// Get window state.
-    pub fn try_find_window_state(&self, handle: WindowHandle) -> Result<&WindowState, Error> {
+    pub fn try_find_window_state(&self, handle: WindowHandle) -> Result<&WindowSysState, Error> {
         let idx = self.try_handle_idx(handle)?;
         Ok(&self.win[idx].user.window())
     }
@@ -649,8 +649,8 @@ where
 
 impl<T, U> WindowsState<T, U>
 where
-    T: Window<U>,
-    U: WindowUserState,
+    T: Window<State = U>,
+    U: WindowState,
 {
     // construct handle
     fn new_handle(&mut self) -> WindowHandle {
@@ -724,8 +724,8 @@ where
 
 impl<T, U> Debug for WinStruct<T, U>
 where
-    T: Window<U> + Debug,
-    U: WindowUserState + Debug,
+    T: Window<State = U> + Debug,
+    U: WindowState + Debug,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WinStruct")

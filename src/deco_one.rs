@@ -2,7 +2,7 @@ use crate::_private::NonExhaustive;
 use crate::deco::deco_one_layout;
 use crate::utils::fill_buf_area;
 use crate::window_deco::{WindowDeco, WindowDecoStyle};
-use crate::WindowUserState;
+use crate::WindowState;
 use rat_focus::HasFocusFlag;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Rect};
@@ -33,49 +33,52 @@ impl WindowDeco for One {
         &self,
         area: Rect,
         buf: &mut Buffer,
-        win_style: Option<&dyn WindowDecoStyle>,
-        win_user: &mut dyn WindowUserState,
+        deco_style: Option<&dyn WindowDecoStyle>,
+        state: &mut dyn WindowState,
     ) {
         let one_style = OneStyle::default();
-        let win_style = win_style
+        let deco_style = deco_style
             .map(|v| v.downcast_ref::<OneStyle>())
             .unwrap_or(&one_style);
 
-        deco_one_layout(area, win_style.block.inner(area), win_user.window_mut());
+        deco_one_layout(area, deco_style.block.inner(area), state.window_mut());
 
-        win_style.block.clone().render(area, buf);
+        deco_style.block.clone().render(area, buf);
 
-        let style = if win_user.window().focus.is_focused() {
-            if let Some(focus_style) = win_style.focus_style {
+        let style = if state.window().focus.is_focused() {
+            if let Some(focus_style) = deco_style.focus_style {
                 focus_style
-            } else if let Some(title_style) = win_style.title_style {
+            } else if let Some(title_style) = deco_style.title_style {
                 title_style
             } else {
                 Style::new().black().on_white()
             }
         } else {
-            if let Some(title_style) = win_style.title_style {
+            if let Some(title_style) = deco_style.title_style {
                 title_style
             } else {
                 Style::new().black().on_white()
             }
         };
-        let alignment = win_style.title_alignment.unwrap_or_default();
+        let alignment = deco_style.title_alignment.unwrap_or_default();
 
         if let Some(cell) = buf.cell_mut((area.left(), area.top())) {
             cell.set_symbol("\u{2590}");
         }
-        fill_buf_area(buf, win_user.window().area_title, " ", style);
+        fill_buf_area(buf, state.window().area_title, " ", style);
         if let Some(cell) = buf.cell_mut((area.right() - 1, area.top())) {
             cell.set_symbol("\u{258C}");
         }
 
-        Text::from(win_user.window().title.as_str())
+        let mut title_area = state.window().area_title;
+        title_area.width = state.window().area_close.x.saturating_sub(title_area.x + 1);
+
+        Text::from(state.window().title.as_str())
             .style(style)
             .alignment(alignment)
-            .render(win_user.window().area_title, buf);
+            .render(title_area, buf);
 
-        Span::from("[\u{2A2F}]").render(win_user.window().area_close, buf);
+        Span::from("[\u{2A2F}]").render(state.window().area_close, buf);
     }
 }
 

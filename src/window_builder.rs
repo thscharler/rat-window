@@ -1,5 +1,5 @@
 use crate::window_deco::WindowDeco;
-use crate::{Window, WindowUserState};
+use crate::{Window, WindowState};
 use ratatui::layout::Rect;
 use std::fmt::{Debug, Formatter};
 use std::rc::Rc;
@@ -7,8 +7,8 @@ use std::rc::Rc;
 /// Builder for new windows.
 pub struct WindowBuilder<T, U>
 where
-    T: Window<U>,
-    U: WindowUserState,
+    T: Window<State = U>,
+    U: WindowState,
 {
     pub(crate) win: T,
     pub(crate) user: U,
@@ -17,8 +17,8 @@ where
 
 impl<T, U> Debug for WindowBuilder<T, U>
 where
-    T: Window<U> + Debug,
-    U: WindowUserState + Debug,
+    T: Window<State = U> + Debug,
+    U: WindowState + Debug,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WindowBuilder")
@@ -31,10 +31,13 @@ where
 
 impl<T, U> WindowBuilder<T, U>
 where
-    T: Window<U>,
-    U: WindowUserState,
+    T: Window<State = U>,
+    U: WindowState,
 {
     pub fn new(win: T, user: U) -> Self {
+        if win.state_id() != user.boxed_type_id() {
+            panic!("state not matching window widget");
+        }
         Self {
             win,
             user,

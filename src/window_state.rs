@@ -1,4 +1,4 @@
-use crate::WindowUserState;
+use crate::WindowState;
 use rat_focus::FocusFlag;
 use ratatui::layout::Rect;
 
@@ -6,7 +6,7 @@ use ratatui::layout::Rect;
 /// Stores all data to manage one window.
 ///
 #[derive(Debug)]
-pub struct WindowState {
+pub struct WindowSysState {
     /// Window inner area, available after render.
     /// __read only__
     pub inner: Rect,
@@ -68,7 +68,7 @@ pub struct WindowState {
     pub focus: FocusFlag,
 }
 
-impl Default for WindowState {
+impl Default for WindowSysState {
     fn default() -> Self {
         Self {
             area: Default::default(),
@@ -94,17 +94,17 @@ impl Default for WindowState {
     }
 }
 
-impl WindowUserState for WindowState {
-    fn window(&self) -> &WindowState {
+impl WindowState for WindowSysState {
+    fn window(&self) -> &WindowSysState {
         self
     }
 
-    fn window_mut(&mut self) -> &mut WindowState {
+    fn window_mut(&mut self) -> &mut WindowSysState {
         self
     }
 }
 
-impl WindowState {
+impl WindowSysState {
     pub fn new() -> Self {
         Self::default()
     }

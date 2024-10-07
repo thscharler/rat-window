@@ -1,4 +1,4 @@
-use crate::WindowUserState;
+use crate::WindowState;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use std::any::{Any, TypeId};
@@ -14,8 +14,8 @@ pub trait WindowDeco: Any {
         &self,
         area: Rect,
         buf: &mut Buffer,
-        win_style: Option<&dyn WindowDecoStyle>,
-        win_user: &mut dyn WindowUserState,
+        style: Option<&dyn WindowDecoStyle>,
+        state: &mut dyn WindowState,
     );
 }
 

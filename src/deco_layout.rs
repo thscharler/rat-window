@@ -1,11 +1,11 @@
 //!
 //! Layout functions for window deco.
 //!
-use crate::WindowState;
+use crate::WindowSysState;
 use ratatui::layout::Rect;
 
 /// Calculate the layout for Deco-One windows.
-pub fn deco_one_layout(area: Rect, inner: Rect, win_state: &mut WindowState) {
+pub fn deco_one_layout(area: Rect, inner: Rect, win_state: &mut WindowSysState) {
     win_state.area = Rect::new(area.x, area.y, area.width, area.height);
     win_state.inner = Rect::new(inner.x, inner.y, inner.width, inner.height);
 

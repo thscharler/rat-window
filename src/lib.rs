@@ -17,6 +17,9 @@ pub mod box_dyn;
 pub mod box_dyn_event;
 pub mod utils;
 
+/// Window decorations.
+///
+/// There is currently One.
 pub mod deco {
     use crate::{deco_layout, deco_one};
 
