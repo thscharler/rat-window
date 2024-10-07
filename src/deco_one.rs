@@ -2,17 +2,14 @@ use crate::_private::NonExhaustive;
 use crate::deco::deco_one_layout;
 use crate::utils::fill_buf_area;
 use crate::window_deco::{WindowDeco, WindowDecoStyle};
-use crate::WindowState;
+use crate::{WindowState, WindowUserState};
 use rat_focus::HasFocusFlag;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Style, Stylize};
 use ratatui::text::{Span, Text};
-use ratatui::widgets::{Block, StatefulWidgetRef, Widget};
+use ratatui::widgets::{Block, Widget};
 use std::any::TypeId;
-use std::cell::RefCell;
-use std::ops::DerefMut;
-use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub struct One;
@@ -37,16 +34,15 @@ impl WindowDeco for One {
         area: Rect,
         buf: &mut Buffer,
         win_style: Option<&dyn WindowDecoStyle>,
-        win_state: Rc<RefCell<WindowState>>,
+        win_state: &mut WindowState,
+        _win_user: &mut dyn WindowUserState,
     ) {
         let one_style = OneStyle::default();
         let win_style = win_style
             .map(|v| v.downcast_ref::<OneStyle>())
             .unwrap_or(&one_style);
 
-        let mut win_state = win_state.borrow_mut();
-
-        deco_one_layout(area, win_style.block.inner(area), win_state.deref_mut());
+        deco_one_layout(area, win_style.block.inner(area), win_state);
 
         win_style.block.clone().render(area, buf);
 

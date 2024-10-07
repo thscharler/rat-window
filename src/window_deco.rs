@@ -1,9 +1,7 @@
-use crate::WindowState;
+use crate::{WindowState, WindowUserState};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use std::any::{Any, TypeId};
-use std::cell::RefCell;
-use std::rc::Rc;
 
 /// Trait for a widget that renders the window frame.
 pub trait WindowDeco: Any {
@@ -16,8 +14,9 @@ pub trait WindowDeco: Any {
         &self,
         area: Rect,
         buf: &mut Buffer,
-        style: Option<&dyn WindowDecoStyle>,
-        state: Rc<RefCell<WindowState>>,
+        win_style: Option<&dyn WindowDecoStyle>,
+        win_state: &mut WindowState,
+        win_user: &mut dyn WindowUserState,
     );
 }
 

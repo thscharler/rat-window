@@ -2,6 +2,7 @@ use std::fmt::{Display, Formatter};
 
 mod deco_layout;
 mod deco_one;
+mod dyn_window;
 mod window;
 mod window_builder;
 mod window_deco;

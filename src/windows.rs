@@ -9,7 +9,6 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
 use ratatui::prelude::StatefulWidget;
 use std::any::Any;
-use std::cell::RefCell;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::rc::Rc;
@@ -21,7 +20,7 @@ pub struct WindowHandle(usize);
 /// Window handler
 pub struct Windows<T, U>
 where
-    T: Window,
+    T: Window<U>,
     U: WindowUserState,
 {
     _phantom: PhantomData<(T, U)>,
@@ -31,7 +30,7 @@ where
 
 pub struct WindowsState<T, U>
 where
-    T: Window,
+    T: Window<U>,
     U: WindowUserState,
 {
     /// last rendered area for windowing.
@@ -70,9 +69,9 @@ where
 struct WinStruct<T, U> {
     win: T,
     // overall window state
-    state: Rc<RefCell<WindowState>>,
-    // user data
-    user_state: Rc<RefCell<U>>,
+    state: WindowState,
+    // user state
+    user: U,
     // frame decoration
     deco: Rc<dyn WindowDeco>,
 }
@@ -101,7 +100,7 @@ struct WinMouseFlags {
 
 impl<T, U> Debug for Windows<T, U>
 where
-    T: Window,
+    T: Window<U>,
     U: WindowUserState,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -113,7 +112,7 @@ where
 
 impl<T, U> Default for Windows<T, U>
 where
-    T: Window,
+    T: Window<U>,
     U: WindowUserState,
 {
     fn default() -> Self {
@@ -126,7 +125,7 @@ where
 
 impl<T, U> Windows<T, U>
 where
-    T: Window,
+    T: Window<U>,
     U: WindowUserState,
 {
     pub fn new() -> Self {
@@ -142,7 +141,7 @@ where
 
 impl<T, U> StatefulWidget for Windows<T, U>
 where
-    T: Window,
+    T: Window<U>,
     U: WindowUserState,
 {
     type State = WindowsState<T, U>;
@@ -159,9 +158,9 @@ where
             };
 
             if let Some(tmp_area) = tmp_area.as_mut() {
-                *tmp_area = tmp_area.union(win.state.borrow().area);
+                *tmp_area = tmp_area.union(win.state.area);
             } else {
-                tmp_area = Some(win.state.borrow().area);
+                tmp_area = Some(win.state.area);
             }
         }
         let tmp_area = tmp_area.unwrap_or_default();
@@ -178,9 +177,9 @@ where
         for WinStruct {
             win,
             state: win_state,
-            user_state: win_user_state,
+            user: win_user,
             deco: win_deco,
-        } in state.win.iter()
+        } in state.win.iter_mut()
         {
             // Find window styles.
             let mut win_deco_style = None;
@@ -192,12 +191,12 @@ where
             }
 
             // decorations
-            let area = win_state.borrow().area;
-            win_deco.render_ref(area, tmp, win_deco_style, win_state.clone());
+            let area = win_state.area;
+            win_deco.render_ref(area, tmp, win_deco_style, win_state, win_user);
 
             // content
-            let inner = win_state.borrow().inner;
-            win.render_ref(inner, tmp, &mut (win_state.clone(), win_user_state.clone()));
+            let inner = win_state.inner;
+            win.render_ref(inner, tmp, win_state, win_user);
         }
 
         copy_buffer(tmp, state.zero_offset, area, buf);
@@ -206,7 +205,7 @@ where
 
 impl<T, U> Debug for WindowsState<T, U>
 where
-    T: Window,
+    T: Window<U>,
     T: Debug,
     U: WindowUserState,
     U: Debug,
@@ -225,7 +224,7 @@ where
 
 impl<T, U> Default for WindowsState<T, U>
 where
-    T: Window,
+    T: Window<U>,
     U: WindowUserState,
 {
     fn default() -> Self {
@@ -243,7 +242,7 @@ where
 
 impl<T, U> HandleEvent<crossterm::event::Event, Regular, Outcome> for WindowsState<T, U>
 where
-    T: Window,
+    T: Window<U>,
     U: WindowUserState,
     // U: HandleEvent<crossterm::event::Event, Regular, Outcome>,
 {
@@ -254,7 +253,7 @@ where
 
 impl<T, U> HandleEvent<crossterm::event::Event, MouseOnly, Outcome> for WindowsState<T, U>
 where
-    T: Window,
+    T: Window<U>,
     U: WindowUserState,
     // U: HandleEvent<crossterm::event::Event, Regular, Outcome>,
 {
@@ -269,7 +268,7 @@ where
 
                 // Test for some draggable area.
                 self.at_hit(Position::new(*x, *y), |windows, pos, _handle, idx_win| {
-                    let win = windows.win[idx_win].state.borrow();
+                    let win = &windows.win[idx_win].state;
 
                     let areas = [
                         win.area_close,
@@ -308,12 +307,14 @@ where
                         let zero = self.mouse.drag_zero.expect("zero");
                         let base = self.mouse.drag_base.expect("base");
 
-                        let mut state = self.win[win_idx].state.borrow_mut();
+                        let bounds = self.windows_area();
+
+                        // move
+                        let mut state = &mut self.win[win_idx].state;
                         state.area.x = (base.x + pos.x).saturating_sub(zero.x);
                         state.area.y = (base.y + pos.y).saturating_sub(zero.y);
 
                         // limit movement
-                        let bounds = self.windows_area();
                         if state.area.right() >= bounds.right() {
                             state.area.x = state
                                 .area
@@ -346,7 +347,7 @@ where
 
 impl<T, U> WindowsState<T, U>
 where
-    T: Window,
+    T: Window<U>,
     U: WindowUserState,
 {
     pub fn new() -> Self {
@@ -387,7 +388,7 @@ where
 
 impl<T, U> WindowsState<T, U>
 where
-    T: Window,
+    T: Window<U>,
     U: WindowUserState,
 {
     /// Get the bounds for the windows coordinate system.
@@ -419,18 +420,17 @@ where
             .insert_no_overwrite(handle, idx)
             .expect("no duplicate");
 
-        let st = WinStruct {
+        let mut st = WinStruct {
             win: builder.win,
             state: builder.state,
-            user_state: builder.user,
+            user: builder.user,
             deco: builder.deco.unwrap_or(self.default_deco.clone()),
         };
 
         // some sensible defaults...
         {
-            let mut state = st.state.borrow_mut();
-            if state.area.is_empty() {
-                state.area = Rect::new(
+            if st.state.area.is_empty() {
+                st.state.area = Rect::new(
                     self.zero_offset.x,
                     self.zero_offset.y,
                     self.area.width,
@@ -469,13 +469,13 @@ where
     pub fn try_focus_window(&mut self, h: WindowHandle) -> Result<bool, Error> {
         let idx_win = self.try_handle_idx(h)?;
 
-        let old_focus = self.win[idx_win].state.borrow().is_focused();
+        let old_focus = self.win[idx_win].state.is_focused();
 
         for (idx, win) in self.win.iter().enumerate() {
             if idx_win == idx {
-                win.state.borrow().focus().set(true);
+                win.state.focus().set(true);
             } else {
-                win.state.borrow().focus().set(false);
+                win.state.focus().set(false);
             }
         }
 
@@ -540,7 +540,7 @@ where
 
 impl<T, U> WindowsState<T, U>
 where
-    T: Window,
+    T: Window<U>,
     U: WindowUserState,
 {
     pub fn windows(&self) -> impl Iterator<Item = WindowHandle> + '_ {
@@ -557,30 +557,24 @@ where
         Ok(&self.win[idx].win)
     }
 
-    pub fn window_state(&self, handle: WindowHandle) -> Rc<RefCell<WindowState>> {
+    pub fn window_state(&self, handle: WindowHandle) -> &WindowState {
         let idx = self.try_handle_idx(handle).expect("valid idx");
-        self.win[idx].state.clone()
+        &self.win[idx].state
     }
 
-    pub fn try_window_state(
-        &self,
-        handle: WindowHandle,
-    ) -> Result<Rc<RefCell<WindowState>>, Error> {
+    pub fn try_window_state(&self, handle: WindowHandle) -> Result<&WindowState, Error> {
         let idx = self.try_handle_idx(handle)?;
-        Ok(self.win[idx].state.clone())
+        Ok(&self.win[idx].state)
     }
 
-    pub fn user_state(&self, handle: WindowHandle) -> Rc<RefCell<dyn WindowUserState>> {
+    pub fn user_state(&self, handle: WindowHandle) -> &U {
         let idx = self.try_handle_idx(handle).expect("valid idx");
-        self.win[idx].user_state.clone()
+        &self.win[idx].user
     }
 
-    pub fn try_user_state(
-        &self,
-        handle: WindowHandle,
-    ) -> Result<Rc<RefCell<dyn WindowUserState>>, Error> {
+    pub fn try_user_state(&self, handle: WindowHandle) -> Result<&U, Error> {
         let idx = self.try_handle_idx(handle)?;
-        Ok(self.win[idx].user_state.clone())
+        Ok(&self.win[idx].user)
     }
 
     pub fn frame(&self, handle: WindowHandle) -> Rc<dyn WindowDeco> {
@@ -596,7 +590,7 @@ where
 
 impl<T, U> WindowsState<T, U>
 where
-    T: Window,
+    T: Window<U>,
     U: WindowUserState,
 {
     // construct handle
@@ -644,7 +638,7 @@ where
             let Some((idx_win, win)) = it.next() else {
                 break;
             };
-            if win.state.borrow().area.contains(pos) {
+            if win.state.area.contains(pos) {
                 let handle = self.idx_handle(idx_win);
                 let r = f(self, pos, handle, idx_win);
                 return Some((handle, r));
@@ -669,12 +663,15 @@ where
     }
 }
 
-impl<T: Debug, U: Debug> Debug for WinStruct<T, U> {
+impl<T, U> Debug for WinStruct<T, U>
+where
+    T: Window<U> + Debug,
+    U: WindowUserState + Debug,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WinStruct")
             .field("win", &self.win)
             .field("state", &self.state)
-            .field("user_state", &self.user_state)
             .field("frame", &"..dyn..")
             .field("frame_style", &"..dyn..")
             .finish()

@@ -1,92 +1,81 @@
-use crate::window_deco::{WindowDeco, WindowDecoStyle};
+use crate::window_deco::WindowDeco;
 use crate::{Window, WindowState, WindowUserState};
 use ratatui::layout::Rect;
-use std::cell::RefCell;
 use std::fmt::{Debug, Formatter};
 use std::rc::Rc;
 
 /// Builder for new windows.
 pub struct WindowBuilder<T, U>
 where
-    T: Window,
+    T: Window<U>,
     U: WindowUserState,
 {
     pub(crate) win: T,
-    pub(crate) state: Rc<RefCell<WindowState>>,
-    pub(crate) user: Rc<RefCell<U>>,
+    pub(crate) state: WindowState,
+    pub(crate) user: U,
     pub(crate) deco: Option<Rc<dyn WindowDeco>>,
-    pub(crate) deco_style: Option<Rc<dyn WindowDecoStyle>>,
 }
 
 impl<T, U> Debug for WindowBuilder<T, U>
 where
-    T: Window + Debug,
+    T: Window<U> + Debug,
     U: WindowUserState + Debug,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WindowBuilder")
             .field("win", &self.win)
             .field("state", &self.state)
-            .field("user", &self.user)
             .field("deco", &"..dyn..")
-            .field("deco_style", &"..dyn..")
             .finish()
     }
 }
 
 impl<T, U> WindowBuilder<T, U>
 where
-    T: Window,
+    T: Window<U>,
     U: WindowUserState,
 {
-    pub fn new(win: T, state: U) -> Self {
+    pub fn new(win: T, user: U) -> Self {
         Self {
             win,
+            user,
             state: Default::default(),
-            user: Rc::new(RefCell::new(state)),
             deco: None,
-            deco_style: None,
         }
     }
 
-    pub fn area(self, area: Rect) -> Self {
-        self.state.borrow_mut().area = area;
+    pub fn area(mut self, area: Rect) -> Self {
+        self.state.area = area;
         self
     }
 
-    pub fn title(self, title: impl Into<String>) -> Self {
-        self.state.borrow_mut().title = title.into();
+    pub fn title(mut self, title: impl Into<String>) -> Self {
+        self.state.title = title.into();
         self
     }
 
-    pub fn modal(self, modal: bool) -> Self {
-        self.state.borrow_mut().modal = modal;
+    pub fn modal(mut self, modal: bool) -> Self {
+        self.state.modal = modal;
         self
     }
 
-    pub fn closeable(self, closeable: bool) -> Self {
-        self.state.borrow_mut().closeable = closeable;
+    pub fn closeable(mut self, closeable: bool) -> Self {
+        self.state.closeable = closeable;
         self
     }
 
-    pub fn resizable(self, resizable: bool) -> Self {
-        self.state.borrow_mut().resizable = resizable;
+    pub fn resizable(mut self, resizable: bool) -> Self {
+        self.state.resizable = resizable;
         self
     }
 
-    pub fn moveable(self, moveable: bool) -> Self {
-        self.state.borrow_mut().moveable = moveable;
+    pub fn moveable(mut self, moveable: bool) -> Self {
+        self.state.moveable = moveable;
         self
     }
 
-    pub fn deco(
-        mut self,
-        deco: impl WindowDeco + 'static,
-        style: impl WindowDecoStyle + 'static,
-    ) -> Self {
-        assert_eq!(deco.style_id(), style.type_id());
+    pub fn deco(mut self, deco: impl WindowDeco + 'static) -> Self {
         self.deco = Some(Rc::new(deco));
-        self.deco_style = Some(Rc::new(style));
         self
     }
 }

@@ -1,5 +1,6 @@
 use crate::mini_salsa::theme::THEME;
 use crate::mini_salsa::{run_ui, setup_logging, MiniSalsaState};
+use log::debug;
 use rat_event::{ct_event, try_flow, HandleEvent, Outcome, Regular};
 use rat_focus::HasFocusFlag;
 use rat_window::deco::{One, OneStyle};
@@ -11,7 +12,7 @@ use ratatui::prelude::Widget;
 use ratatui::style::Style;
 use ratatui::widgets::{Block, BorderType, StatefulWidget, StatefulWidgetRef};
 use ratatui::Frame;
-use std::any::TypeId;
+use std::any::{Any, TypeId};
 use std::cell::RefCell;
 use std::fmt::Debug;
 use std::rc::Rc;
@@ -32,8 +33,11 @@ fn main() -> Result<(), anyhow::Error> {
 
 struct Data {}
 
+type DynUserState = Box<dyn WindowUserState + 'static>;
+type DynWindow = Box<dyn Window<DynUserState> + 'static>;
+
 struct State {
-    win: WindowsState<Box<dyn Window + 'static>, Box<dyn WindowUserState + 'static>>,
+    win: WindowsState<DynWindow, DynUserState>,
 }
 
 fn repaint_windows(
@@ -117,37 +121,31 @@ impl MinWin {
         self
     }
 
-    fn boxed(self) -> Box<dyn Window> {
+    fn boxed(self) -> DynWindow {
         Box::new(self)
     }
 }
 
-impl Window for MinWin {
+impl Window<DynUserState> for MinWin {
     fn state_id(&self) -> TypeId {
         TypeId::of::<MinWinState>()
     }
-}
-
-impl StatefulWidgetRef for MinWin {
-    type State = (Rc<RefCell<WindowState>>, Rc<RefCell<dyn WindowUserState>>);
 
     fn render_ref(
         &self,
         area: Rect,
         buf: &mut Buffer,
-        (window_state, user_state): &mut Self::State,
+        win_state: &mut WindowState,
+        win_user: &mut DynUserState,
     ) {
-        let window_state = window_state.borrow();
-
-        let mut user_state = user_state.borrow_mut();
-        let user_state = user_state.downcast_box_dyn_mut::<MinWinState>();
+        let win_user = win_user.downcast_mut::<MinWinState>();
 
         fill_buf_area(buf, area, &self.fill.to_string(), Style::default());
 
-        if window_state.is_focused() {
-            (&user_state.msg).render(area, buf);
+        if win_state.is_focused() {
+            (&win_user.msg).render(area, buf);
         } else {
-            (&user_state.msg).render(area, buf);
+            (&win_user.msg).render(area, buf);
         }
     }
 }
@@ -159,7 +157,7 @@ impl MinWinState {
         Self { msg: msg.into() }
     }
 
-    fn boxed(self) -> Box<dyn WindowUserState> {
+    fn boxed(self) -> DynUserState {
         Box::new(self)
     }
 }
