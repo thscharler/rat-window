@@ -43,32 +43,32 @@ where
     }
 
     pub fn area(mut self, area: Rect) -> Self {
-        self.user.window_state_mut().area = area;
+        self.user.window_mut().area = area;
         self
     }
 
     pub fn title(mut self, title: impl Into<String>) -> Self {
-        self.user.window_state_mut().title = title.into();
+        self.user.window_mut().title = title.into();
         self
     }
 
     pub fn modal(mut self, modal: bool) -> Self {
-        self.user.window_state_mut().modal = modal;
+        self.user.window_mut().modal = modal;
         self
     }
 
     pub fn closeable(mut self, closeable: bool) -> Self {
-        self.user.window_state_mut().closeable = closeable;
+        self.user.window_mut().closeable = closeable;
         self
     }
 
     pub fn resizable(mut self, resizable: bool) -> Self {
-        self.user.window_state_mut().resizable = resizable;
+        self.user.window_mut().resizable = resizable;
         self
     }
 
     pub fn moveable(mut self, moveable: bool) -> Self {
-        self.user.window_state_mut().moveable = moveable;
+        self.user.window_mut().moveable = moveable;
         self
     }
 

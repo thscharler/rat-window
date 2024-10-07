@@ -50,12 +50,12 @@ impl Window<DynEventUserState> for DynEventWindow {
 }
 
 impl WindowUserState for DynEventUserState {
-    fn window_state(&self) -> &WindowState {
-        self.as_ref().window_state()
+    fn window(&self) -> &WindowState {
+        self.as_ref().window()
     }
 
-    fn window_state_mut(&mut self) -> &mut WindowState {
-        self.as_mut().window_state_mut()
+    fn window_mut(&mut self) -> &mut WindowState {
+        self.as_mut().window_mut()
     }
 }
 impl EventUserState for DynEventUserState {}

@@ -2,12 +2,10 @@ use crate::mini_salsa::theme::THEME;
 use crate::mini_salsa::{run_ui, setup_logging, MiniSalsaState};
 use rat_event::{ct_event, ConsumedEvent, HandleEvent, MouseOnly, Outcome, Regular};
 use rat_focus::{FocusBuilder, FocusFlag, HasFocus, HasFocusFlag};
+use rat_window::box_dyn_event::{DynEventUserState, DynEventWindow, EventUserState};
 use rat_window::deco::{One, OneStyle};
 use rat_window::utils::fill_buf_area;
-use rat_window::{
-    DynEventUserState, DynEventWindow, EventUserState, Window, WindowBuilder, WindowState,
-    WindowUserState, Windows, WindowsState,
-};
+use rat_window::{Window, WindowBuilder, WindowState, WindowUserState, Windows, WindowsState};
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::prelude::Widget;
@@ -150,7 +148,7 @@ impl Window<DynEventUserState> for MinWin {
 
         fill_buf_area(buf, area, &self.fill.to_string(), Style::default());
 
-        if state.window_state().focus.is_focused() {
+        if state.window().focus.is_focused() {
             (&state.msg).render(area, buf);
         } else {
             (&state.msg).render(area, buf);
@@ -159,11 +157,11 @@ impl Window<DynEventUserState> for MinWin {
 }
 
 impl WindowUserState for MinWinState {
-    fn window_state(&self) -> &WindowState {
+    fn window(&self) -> &WindowState {
         &self.window
     }
 
-    fn window_state_mut(&mut self) -> &mut WindowState {
+    fn window_mut(&mut self) -> &mut WindowState {
         &mut self.window
     }
 }

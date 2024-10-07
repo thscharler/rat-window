@@ -41,15 +41,11 @@ impl WindowDeco for One {
             .map(|v| v.downcast_ref::<OneStyle>())
             .unwrap_or(&one_style);
 
-        deco_one_layout(
-            area,
-            win_style.block.inner(area),
-            win_user.window_state_mut(),
-        );
+        deco_one_layout(area, win_style.block.inner(area), win_user.window_mut());
 
         win_style.block.clone().render(area, buf);
 
-        let style = if win_user.window_state().focus.is_focused() {
+        let style = if win_user.window().focus.is_focused() {
             if let Some(focus_style) = win_style.focus_style {
                 focus_style
             } else if let Some(title_style) = win_style.title_style {
@@ -69,17 +65,17 @@ impl WindowDeco for One {
         if let Some(cell) = buf.cell_mut((area.left(), area.top())) {
             cell.set_symbol("\u{2590}");
         }
-        fill_buf_area(buf, win_user.window_state().area_title, " ", style);
+        fill_buf_area(buf, win_user.window().area_title, " ", style);
         if let Some(cell) = buf.cell_mut((area.right() - 1, area.top())) {
             cell.set_symbol("\u{258C}");
         }
 
-        Text::from(win_user.window_state().title.as_str())
+        Text::from(win_user.window().title.as_str())
             .style(style)
             .alignment(alignment)
-            .render(win_user.window_state().area_title, buf);
+            .render(win_user.window().area_title, buf);
 
-        Span::from("[\u{2A2F}]").render(win_user.window_state().area_close, buf);
+        Span::from("[\u{2A2F}]").render(win_user.window().area_close, buf);
     }
 }
 

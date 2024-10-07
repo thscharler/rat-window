@@ -4,10 +4,16 @@ use ratatui::layout::Rect;
 use std::any::{Any, TypeId};
 
 /// Trait for a window.
+///
+/// Similar to StatefulWidgetRef but with dynamic coupling of
+/// the state instead of compile time coupling. This works
+/// better if the state
 pub trait Window<U>: Any
 where
     U: WindowUserState,
 {
+    // type State: WindowUserState
+
     /// Return the type-id of a compatible WindowUserState.
     fn state_id(&self) -> TypeId;
 
@@ -17,10 +23,10 @@ where
 
 pub trait WindowUserState: Any {
     /// Access to the window state stored in the user state.
-    fn window_state(&self) -> &WindowState;
+    fn window(&self) -> &WindowState;
 
     /// Access to the window state stored in the user state.
-    fn window_state_mut(&mut self) -> &mut WindowState;
+    fn window_mut(&mut self) -> &mut WindowState;
 }
 
 impl<U> dyn Window<U>

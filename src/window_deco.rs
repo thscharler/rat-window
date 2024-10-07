@@ -1,4 +1,4 @@
-use crate::{WindowState, WindowUserState};
+use crate::WindowUserState;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use std::any::{Any, TypeId};

@@ -8,7 +8,6 @@ use rat_focus::{ContainerFlag, FocusBuilder, HasFocus, HasFocusFlag};
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
 use ratatui::prelude::StatefulWidget;
-use std::any::Any;
 use std::cmp::max;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
@@ -18,7 +17,7 @@ use std::rc::Rc;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct WindowHandle(usize);
 
-/// Window handler
+/// Window rendering.
 pub struct Windows<T, U>
 where
     T: Window<U>,
@@ -29,6 +28,7 @@ where
     deco_style: Vec<Box<dyn WindowDecoStyle + 'static>>,
 }
 
+/// State for the Windows widget.
 pub struct WindowsState<T, U>
 where
     T: Window<U>,
@@ -80,7 +80,7 @@ struct WinStruct<T, U> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WinMouseArea {
+enum WinMouseArea {
     Close,
     Move,
     TopLeft,
@@ -135,6 +135,8 @@ where
         Self::default()
     }
 
+    /// Set the decoration styles for windows.
+    /// You can call this multiple times if you use more than one WindowDeco.
     pub fn deco(mut self, deco_style: impl WindowDecoStyle) -> Self {
         // todo: check for duplicates?
         self.deco_style.push(Box::new(deco_style));
@@ -161,14 +163,14 @@ where
             };
 
             if let Some(tmp_area) = tmp_area.as_mut() {
-                *tmp_area = tmp_area.union(win.user.window_state().area);
+                *tmp_area = tmp_area.union(win.user.window().area);
             } else {
-                tmp_area = Some(win.user.window_state().area);
+                tmp_area = Some(win.user.window().area);
             }
         }
         let tmp_area = tmp_area.unwrap_or_default();
 
-        // buffer is constructed with windows coordinates
+        // buffer is constructed with Windows coordinates
         let mut tmp = Buffer::empty(Rect::new(
             tmp_area.x,
             tmp_area.y,
@@ -188,11 +190,11 @@ where
             }
 
             // decorations
-            let area = user.window_state().area;
+            let area = user.window().area;
             deco.render_ref(area, tmp, win_deco_style, user);
 
             // content
-            let inner = user.window_state().inner;
+            let inner = user.window().inner;
             win.render_ref(inner, tmp, user);
         }
 
@@ -246,7 +248,7 @@ where
 {
     fn build(&self, builder: &mut FocusBuilder) {
         for WinStruct { user, .. } in self.win.iter() {
-            if user.window_state().focus.is_focused() {
+            if user.window().focus.is_focused() {
                 builder.container(user);
             }
         }
@@ -276,7 +278,7 @@ where
             let mut r = Outcome::Continue;
             if self.is_focused() {
                 for WinStruct { user, .. } in self.win.iter_mut() {
-                    if user.window_state().focus.is_focused() {
+                    if user.window().focus.is_focused() {
                         let u = user.handle(event, Regular);
                         r = max(r, u);
                     }
@@ -306,7 +308,7 @@ where
 
                 // Test for some draggable area.
                 self.at_hit(Position::new(*x, *y), |windows, pos, _handle, idx_win| {
-                    let win = windows.win[idx_win].user.window_state();
+                    let win = windows.win[idx_win].user.window();
 
                     let areas = [
                         win.area_close,
@@ -348,7 +350,7 @@ where
                         let bounds = self.windows_area();
 
                         // move
-                        let state = self.win[win_idx].user.window_state_mut();
+                        let state = self.win[win_idx].user.window_mut();
                         state.area.x = (base.x + pos.x).saturating_sub(zero.x);
                         state.area.y = (base.y + pos.y).saturating_sub(zero.y);
 
@@ -415,20 +417,6 @@ where
         self.default_deco = Rc::new(deco);
         self
     }
-
-    /// Change the deco-style for all windows.
-    /// Doesn't change the default, use deco for that.
-    ///
-    /// Changes only windows that have the same deco/style type-id.
-    pub fn change_deco(&mut self, deco: impl WindowDeco + 'static) {
-        let new_deco = Rc::new(deco);
-
-        for w in self.win.iter_mut() {
-            if w.deco.type_id() == new_deco.type_id() {
-                w.deco = new_deco.clone();
-            }
-        }
-    }
 }
 
 impl<T, U> WindowsState<T, U>
@@ -473,8 +461,8 @@ where
 
         // some sensible defaults...
         {
-            if st.user.window_state().area.is_empty() {
-                st.user.window_state_mut().area = Rect::new(
+            if st.user.window().area.is_empty() {
+                st.user.window_mut().area = Rect::new(
                     self.zero_offset.x,
                     self.zero_offset.y,
                     self.area.width,
@@ -489,12 +477,7 @@ where
     }
 
     /// Move window at position to the front.
-    ///
     /// This takes screen coordinates.
-    ///
-    /// __Panic__
-    ///
-    /// Panics if pos is not in bounds of the windows area.
     pub fn focus_window_at(&mut self, pos: Position) -> Option<(WindowHandle, bool)> {
         self.at_hit(pos, |w, _, handle, _| {
             // focus
@@ -503,26 +486,31 @@ where
     }
 
     /// Focus the given window.
+    ///
     /// Doesn't move the window to the front. Use to_front... for that.
+    /// Doesn't focus the first widget in the window. Use Focus::focus_container(windows)
+    ///
+    /// __Panic__
+    ///
+    /// Panics for an invalid handle.
     pub fn focus_window(&mut self, h: WindowHandle) -> bool {
         self.try_focus_window(h).expect("valid handle")
     }
 
     /// Focus the given window.
-    /// Doesn't move the window to the front. Use to_front... for that.
     ///
-    /// Doesn't focus the first widget in the window.
-    /// Use Focus::first_container(windows)
+    /// Doesn't move the window to the front. Use to_front... for that.
+    /// Doesn't focus the first widget in the window. Use Focus::focus_container(windows)
     pub fn try_focus_window(&mut self, h: WindowHandle) -> Result<bool, Error> {
         let idx_win = self.try_handle_idx(h)?;
 
-        let old_focus = self.win[idx_win].user.window_state().focus.is_focused();
+        let old_focus = self.win[idx_win].user.window().focus.is_focused();
 
         for (idx, win) in self.win.iter().enumerate() {
             if idx_win == idx {
-                win.user.window_state().focus.set(true);
+                win.user.window().focus.set(true);
             } else {
-                win.user.window_state().focus.set(false);
+                win.user.window().focus.set(false);
             }
         }
 
@@ -532,10 +520,6 @@ where
     /// Move window at position to the front.
     ///
     /// This takes screen coordinates.
-    ///
-    /// __Panic__
-    ///
-    /// Panics if pos is not in bounds of the windows area.
     #[allow(clippy::wrong_self_convention)]
     pub fn to_front_at(&mut self, pos: Position) -> Option<(WindowHandle, bool)> {
         self.at_hit(pos, |w, _, handle, _| {
@@ -546,6 +530,9 @@ where
 
     /// Move window to the front.
     ///
+    /// __Panic__
+    ///
+    /// Panics for an invalid handle.
     #[allow(clippy::wrong_self_convention)]
     pub fn to_front(&mut self, h: WindowHandle) -> bool {
         self.try_to_front(h).expect("valid handle")
@@ -590,46 +577,71 @@ where
     T: Window<U>,
     U: WindowUserState,
 {
+    /// Iterate window handles.
     pub fn windows(&self) -> impl Iterator<Item = WindowHandle> + '_ {
         self.win_handle.left_values().copied()
     }
 
-    pub fn window(&self, handle: WindowHandle) -> &T {
+    /// Get window widget.
+    ///
+    /// __Panic__
+    ///
+    /// Panics for an invalid handle.
+    pub fn find_window(&self, handle: WindowHandle) -> &T {
         let idx = self.try_handle_idx(handle).expect("valid idx");
         &self.win[idx].win
     }
 
-    pub fn try_window(&self, handle: WindowHandle) -> Result<&T, Error> {
+    /// Get window widget.
+    pub fn try_find_window(&self, handle: WindowHandle) -> Result<&T, Error> {
         let idx = self.try_handle_idx(handle)?;
         Ok(&self.win[idx].win)
     }
 
-    pub fn window_state(&self, handle: WindowHandle) -> &WindowState {
+    /// Get window state.
+    ///
+    /// __Panic__
+    ///
+    /// Panics for an invalid handle.
+    pub fn find_window_state(&self, handle: WindowHandle) -> &WindowState {
         let idx = self.try_handle_idx(handle).expect("valid idx");
-        &self.win[idx].user.window_state()
+        &self.win[idx].user.window()
     }
 
-    pub fn try_window_state(&self, handle: WindowHandle) -> Result<&WindowState, Error> {
+    /// Get window state.
+    pub fn try_find_window_state(&self, handle: WindowHandle) -> Result<&WindowState, Error> {
         let idx = self.try_handle_idx(handle)?;
-        Ok(&self.win[idx].user.window_state())
+        Ok(&self.win[idx].user.window())
     }
 
-    pub fn user_state(&self, handle: WindowHandle) -> &U {
+    /// Get window user state.
+    ///
+    /// __Panic__
+    ///
+    /// Panics for an invalid handle.
+    pub fn find_user_state(&self, handle: WindowHandle) -> &U {
         let idx = self.try_handle_idx(handle).expect("valid idx");
         &self.win[idx].user
     }
 
-    pub fn try_user_state(&self, handle: WindowHandle) -> Result<&U, Error> {
+    /// Get window user state.
+    pub fn try_find_user_state(&self, handle: WindowHandle) -> Result<&U, Error> {
         let idx = self.try_handle_idx(handle)?;
         Ok(&self.win[idx].user)
     }
 
-    pub fn frame(&self, handle: WindowHandle) -> Rc<dyn WindowDeco> {
+    /// Get the deco widget for the handle.
+    ///
+    /// __Panic__
+    ///
+    /// Panics for an invalid handle.
+    pub fn find_deco(&self, handle: WindowHandle) -> Rc<dyn WindowDeco> {
         let idx = self.try_handle_idx(handle).expect("valid idx");
         self.win[idx].deco.clone()
     }
 
-    pub fn try_frame(&self, handle: WindowHandle) -> Result<Rc<dyn WindowDeco>, Error> {
+    /// Get the deco widget for the handle.
+    pub fn try_find_deco(&self, handle: WindowHandle) -> Result<Rc<dyn WindowDeco>, Error> {
         let idx = self.try_handle_idx(handle)?;
         Ok(self.win[idx].deco.clone())
     }
@@ -685,7 +697,7 @@ where
             let Some((idx_win, win)) = it.next() else {
                 break;
             };
-            if win.user.window_state().area.contains(pos) {
+            if win.user.window().area.contains(pos) {
                 let handle = self.idx_handle(idx_win);
                 let r = f(self, pos, handle, idx_win);
                 return Some((handle, r));
