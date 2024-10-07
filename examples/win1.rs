@@ -24,16 +24,7 @@ fn main() -> Result<(), anyhow::Error> {
     let mut data = Data {};
 
     let mut state = State {
-        win: WindowsState::new().zero_offset(3, 3).deco(
-            One,
-            OneStyle {
-                block: Block::bordered().border_type(BorderType::Rounded),
-                title_style: Some(THEME.bluegreen(2)),
-                title_alignment: Some(Alignment::Right),
-                focus_style: Some(THEME.focus()),
-                ..Default::default()
-            },
-        ),
+        win: WindowsState::new().zero_offset(3, 3).deco(One),
     };
 
     run_ui(handle_windows, repaint_windows, &mut data, &mut state)
@@ -66,7 +57,15 @@ fn repaint_windows(
 
     // frame.buffer_mut().set_style(hlayout[0], THEME.black(2));
     fill_buf_area(frame.buffer_mut(), hlayout[0], " ", THEME.black(2));
-    Windows::new().render(hlayout[0], frame.buffer_mut(), &mut state.win);
+    Windows::new()
+        .deco(OneStyle {
+            block: Block::bordered().border_type(BorderType::Rounded),
+            title_style: Some(THEME.bluegreen(2)),
+            title_alignment: Some(Alignment::Right),
+            focus_style: Some(THEME.focus()),
+            ..Default::default()
+        })
+        .render(hlayout[0], frame.buffer_mut(), &mut state.win);
 
     // state.win;
 
@@ -87,7 +86,7 @@ fn handle_windows(
                     MinWin::new().fill(c).boxed(),
                     MinWinState::new(format!(" {} ", rand::random::<u8>())).boxed(),
                 )
-                .area(Rect::new(10, 10, 10, 10)),
+                .area(Rect::new(10, 10, 15, 20)),
             );
             Outcome::Changed
         }

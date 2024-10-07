@@ -1,15 +1,24 @@
 use crate::WindowState;
-use ratatui::widgets::StatefulWidgetRef;
+use ratatui::buffer::Buffer;
+use ratatui::layout::Rect;
 use std::any::{Any, TypeId};
 use std::cell::RefCell;
 use std::rc::Rc;
 
 /// Trait for a widget that renders the window frame.
-pub trait WindowDeco:
-    StatefulWidgetRef<State = (Rc<RefCell<WindowState>>, Rc<dyn WindowDecoStyle>)> + Any
-{
+pub trait WindowDeco: Any {
     /// Return the type-id of a compatible WindowFrameStyle.
     fn style_id(&self) -> TypeId;
+
+    /// Draws the current state of the widget in the given buffer. That is the only method required
+    /// to implement a custom stateful widget.
+    fn render_ref(
+        &self,
+        area: Rect,
+        buf: &mut Buffer,
+        style: Option<&dyn WindowDecoStyle>,
+        state: Rc<RefCell<WindowState>>,
+    );
 }
 
 /// Style parameters for a window frame.

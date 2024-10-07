@@ -1,15 +1,14 @@
 use crate::deco::One;
 use crate::deco_one::OneStyle;
 use crate::utils::{copy_buffer, fill_buf_area};
-use crate::window_style::{WindowDeco, WindowDecoStyle};
+use crate::window_deco::{WindowDeco, WindowDecoStyle};
 use crate::{Error, Window, WindowBuilder, WindowState, WindowUserState};
 use bimap::BiMap;
 use rat_event::{ct_event, HandleEvent, MouseOnly, Outcome, Regular};
 use rat_focus::HasFocusFlag;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
-use ratatui::prelude::{StatefulWidget, Style};
-use ratatui::widgets::Block;
+use ratatui::prelude::StatefulWidget;
 use std::any::Any;
 use std::cell::RefCell;
 use std::fmt::{Debug, Formatter};
@@ -21,13 +20,14 @@ use std::rc::Rc;
 pub struct WindowHandle(usize);
 
 /// Window handler
-#[derive(Debug)]
 pub struct Windows<T, U>
 where
     T: Window,
     U: WindowUserState,
 {
     _phantom: PhantomData<(T, U)>,
+    // deco styles per deco
+    deco_style: Vec<Box<dyn WindowDecoStyle + 'static>>,
 }
 
 pub struct WindowsState<T, U>
@@ -56,7 +56,7 @@ where
     /// default decorations
     /// __read+write__
     pub default_deco: Rc<dyn WindowDeco>,
-    pub default_deco_style: Rc<dyn WindowDecoStyle>,
+    // pub default_deco_style: Rc<dyn WindowDecoStyle>,
 
     // max handle
     max_id: usize,
@@ -78,7 +78,7 @@ struct WinStruct<T, U> {
     // frame decoration
     deco: Rc<dyn WindowDeco>,
     // frame decoration styles
-    deco_style: Rc<dyn WindowDecoStyle>,
+    // deco_style: Rc<dyn WindowDecoStyle>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -103,6 +103,18 @@ struct WinMouseFlags {
     drag_area: Option<WinMouseArea>,
 }
 
+impl<T, U> Debug for Windows<T, U>
+where
+    T: Window,
+    U: WindowUserState,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Windows")
+            .field("deco_style", &"..dyn..")
+            .finish()
+    }
+}
+
 impl<T, U> Default for Windows<T, U>
 where
     T: Window,
@@ -111,6 +123,7 @@ where
     fn default() -> Self {
         Self {
             _phantom: Default::default(),
+            deco_style: vec![],
         }
     }
 }
@@ -122,6 +135,12 @@ where
 {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn deco(mut self, deco_style: impl WindowDecoStyle) -> Self {
+        // todo: check for duplicates?
+        self.deco_style.push(Box::new(deco_style));
+        self
     }
 }
 
@@ -164,16 +183,22 @@ where
             win,
             state: win_state,
             user_state: win_user_state,
-            deco: win_frame,
-            deco_style: win_frame_style,
+            deco: win_deco,
+            // deco_style: win_frame_style,
         } in state.win.iter()
         {
-            // Clear out window area
-            fill_buf_area(tmp, win_state.borrow().area, " ", Style::default());
+            // Find window styles.
+            let mut win_deco_style = None;
+            for style in self.deco_style.iter() {
+                if win_deco.style_id() == style.as_ref().type_id() {
+                    win_deco_style = Some(style.as_ref());
+                    break;
+                }
+            }
 
             // decorations
             let area = win_state.borrow().area;
-            win_frame.render_ref(area, tmp, &mut (win_state.clone(), win_frame_style.clone()));
+            win_deco.render_ref(area, tmp, win_deco_style, win_state.clone());
 
             // content
             let inner = win_state.borrow().inner;
@@ -213,13 +238,13 @@ where
             area: Default::default(),
             zero_offset: Default::default(),
             default_deco: Rc::new(One),
-            default_deco_style: Rc::new(OneStyle {
-                block: Block::bordered(),
-                title_style: None,
-                title_alignment: None,
-                focus_style: None,
-                ..Default::default()
-            }),
+            // default_deco_style: Rc::new(OneStyle {
+            //     block: Block::bordered(),
+            //     title_style: None,
+            //     title_alignment: None,
+            //     focus_style: None,
+            //     ..Default::default()
+            // }),
             max_id: 0,
             win_handle: Default::default(),
             win: vec![],
@@ -232,6 +257,7 @@ impl<T, U> HandleEvent<crossterm::event::Event, Regular, Outcome> for WindowsSta
 where
     T: Window,
     U: WindowUserState,
+    // U: HandleEvent<crossterm::event::Event, Regular, Outcome>,
 {
     fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> Outcome {
         self.handle(event, MouseOnly)
@@ -242,6 +268,7 @@ impl<T, U> HandleEvent<crossterm::event::Event, MouseOnly, Outcome> for WindowsS
 where
     T: Window,
     U: WindowUserState,
+    // U: HandleEvent<crossterm::event::Event, Regular, Outcome>,
 {
     fn handle(&mut self, event: &crossterm::event::Event, _qualifier: MouseOnly) -> Outcome {
         match event {
@@ -353,11 +380,11 @@ where
     pub fn deco(
         mut self,
         deco: impl WindowDeco + 'static,
-        style: impl WindowDecoStyle + 'static,
+        // style: impl WindowDecoStyle + 'static,
     ) -> Self {
-        assert_eq!(deco.style_id(), style.type_id());
+        // assert_eq!(deco.style_id(), style.type_id());
         self.default_deco = Rc::new(deco);
-        self.default_deco_style = Rc::new(style);
+        // self.default_deco_style = Rc::new(style);
         self
     }
 
@@ -368,18 +395,18 @@ where
     pub fn change_deco(
         &mut self,
         deco: impl WindowDeco + 'static,
-        style: impl WindowDecoStyle + 'static,
+        // style: impl WindowDecoStyle + 'static,
     ) {
         let new_deco = Rc::new(deco);
-        let new_style = Rc::new(style);
+        // let new_style = Rc::new(style);
 
         for w in self.win.iter_mut() {
             if w.deco.type_id() == new_deco.type_id() {
                 w.deco = new_deco.clone();
             }
-            if w.deco_style.type_id() == new_style.type_id() {
-                w.deco_style = new_style.clone();
-            }
+            // if w.deco_style.type_id() == new_style.type_id() {
+            //     w.deco_style = new_style.clone();
+            // }
         }
     }
 }
@@ -423,9 +450,9 @@ where
             state: builder.state,
             user_state: builder.user,
             deco: builder.deco.unwrap_or(self.default_deco.clone()),
-            deco_style: builder
-                .deco_style
-                .unwrap_or(self.default_deco_style.clone()),
+            // deco_style: builder
+            //     .deco_style
+            //     .unwrap_or(self.default_deco_style.clone()),
         };
 
         // some sensible defaults...
@@ -595,15 +622,15 @@ where
         Ok(self.win[idx].deco.clone())
     }
 
-    pub fn frame_style(&self, handle: WindowHandle) -> Rc<dyn WindowDecoStyle> {
-        let idx = self.try_handle_idx(handle).expect("valid idx");
-        self.win[idx].deco_style.clone()
-    }
-
-    pub fn try_frame_style(&self, handle: WindowHandle) -> Result<Rc<dyn WindowDecoStyle>, Error> {
-        let idx = self.try_handle_idx(handle)?;
-        Ok(self.win[idx].deco_style.clone())
-    }
+    // pub fn frame_style(&self, handle: WindowHandle) -> Rc<dyn WindowDecoStyle> {
+    //     let idx = self.try_handle_idx(handle).expect("valid idx");
+    //     self.win[idx].deco_style.clone()
+    // }
+    //
+    // pub fn try_frame_style(&self, handle: WindowHandle) -> Result<Rc<dyn WindowDecoStyle>, Error> {
+    //     let idx = self.try_handle_idx(handle)?;
+    //     Ok(self.win[idx].deco_style.clone())
+    // }
 }
 
 impl<T, U> WindowsState<T, U>

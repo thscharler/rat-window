@@ -1,6 +1,7 @@
 use crate::_private::NonExhaustive;
+use crate::deco::deco_one_layout;
 use crate::utils::fill_buf_area;
-use crate::window_style::{WindowDeco, WindowDecoStyle};
+use crate::window_deco::{WindowDeco, WindowDecoStyle};
 use crate::WindowState;
 use rat_focus::HasFocusFlag;
 use ratatui::buffer::Buffer;
@@ -10,6 +11,7 @@ use ratatui::text::{Span, Text};
 use ratatui::widgets::{Block, StatefulWidgetRef, Widget};
 use std::any::TypeId;
 use std::cell::RefCell;
+use std::ops::DerefMut;
 use std::rc::Rc;
 
 #[derive(Debug, Clone)]
@@ -29,62 +31,22 @@ impl WindowDeco for One {
     fn style_id(&self) -> TypeId {
         TypeId::of::<OneStyle>()
     }
-}
 
-impl One {
-    pub fn new() -> Self {
-        Self
-    }
-}
+    fn render_ref(
+        &self,
+        area: Rect,
+        buf: &mut Buffer,
+        win_style: Option<&dyn WindowDecoStyle>,
+        win_state: Rc<RefCell<WindowState>>,
+    ) {
+        let one_style = OneStyle::default();
+        let win_style = win_style
+            .map(|v| v.downcast_ref::<OneStyle>())
+            .unwrap_or(&one_style);
 
-impl StatefulWidgetRef for One {
-    type State = (Rc<RefCell<WindowState>>, Rc<dyn WindowDecoStyle>);
+        let mut win_state = win_state.borrow_mut();
 
-    #[allow(clippy::collapsible_else_if)]
-    fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
-        let win_style = state.1.as_ref().downcast_ref::<OneStyle>();
-        let mut win_state = state.0.borrow_mut();
-
-        {
-            win_state.area = Rect::new(area.x, area.y, area.width, area.height);
-            let inner = win_style.block.inner(area);
-            win_state.inner = Rect::new(inner.x, inner.y, inner.width, inner.height);
-        }
-
-        if win_state.closeable {
-            win_state.area_close = Rect::new(area.right() - 5, area.top(), 3, 1);
-        } else {
-            win_state.area_close = Rect::default();
-        }
-        if win_state.moveable {
-            win_state.area_move = Rect::new(area.left() + 1, area.top(), area.width - 2, 1);
-        } else {
-            win_state.area_move = Rect::default();
-        }
-        if win_state.resizable {
-            win_state.area_resize_top = Rect::new(area.left() + 1, area.top(), 0, 1);
-            win_state.area_resize_right =
-                Rect::new(area.right() - 1, area.top() + 1, 1, area.height - 2);
-            win_state.area_resize_bottom =
-                Rect::new(area.left() + 1, area.bottom() - 1, area.width - 2, 1);
-            win_state.area_resize_left = Rect::new(area.left(), area.top() + 1, 1, area.height - 2);
-            win_state.area_resize_top_left = Rect::new(area.left(), area.top(), 1, 1);
-            win_state.area_resize_top_right = Rect::new(area.right() - 1, area.top(), 1, 1);
-            win_state.area_resize_bottom_left = Rect::new(area.left(), area.bottom() - 1, 1, 1);
-            win_state.area_resize_bottom_right =
-                Rect::new(area.right() - 1, area.bottom() - 1, 1, 1);
-        } else {
-            win_state.area_resize_top = Rect::default();
-            win_state.area_resize_right = Rect::default();
-            win_state.area_resize_bottom = Rect::default();
-            win_state.area_resize_left = Rect::default();
-            win_state.area_resize_top_left = Rect::default();
-            win_state.area_resize_top_right = Rect::default();
-            win_state.area_resize_bottom_left = Rect::default();
-            win_state.area_resize_bottom_right = Rect::default();
-        }
-
-        win_state.area_title = Rect::new(area.left() + 1, area.top(), area.width - 2, 1);
+        deco_one_layout(area, win_style.block.inner(area), win_state.deref_mut());
 
         win_style.block.clone().render(area, buf);
 
@@ -119,6 +81,12 @@ impl StatefulWidgetRef for One {
             .render(win_state.area_title, buf);
 
         Span::from("[\u{2A2F}]").render(win_state.area_close, buf);
+    }
+}
+
+impl One {
+    pub fn new() -> Self {
+        Self
     }
 }
 

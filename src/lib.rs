@@ -1,19 +1,24 @@
 use std::fmt::{Display, Formatter};
 
+mod deco_layout;
 mod deco_one;
 mod window;
 mod window_builder;
-mod window_style;
+mod window_deco;
+mod window_state;
 mod windows;
 
 pub use window::*;
-pub use window_builder::WindowBuilder;
+pub use window_builder::*;
+pub use window_state::*;
 pub use windows::*;
 
 pub mod utils;
 
 pub mod deco {
-    use crate::deco_one;
+    use crate::{deco_layout, deco_one};
+
+    pub use deco_layout::*;
     pub use deco_one::{One, OneStyle};
 }
 

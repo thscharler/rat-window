@@ -1,4 +1,4 @@
-use crate::window_style::{WindowDeco, WindowDecoStyle};
+use crate::window_deco::{WindowDeco, WindowDecoStyle};
 use crate::{Window, WindowState, WindowUserState};
 use ratatui::layout::Rect;
 use std::cell::RefCell;
