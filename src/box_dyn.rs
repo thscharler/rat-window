@@ -11,15 +11,17 @@ impl Window<DynUserState> for DynWindow {
         self.as_ref().state_id()
     }
 
-    fn render_ref(
-        &self,
-        area: Rect,
-        buf: &mut Buffer,
-        state: &mut WindowState,
-        user: &mut DynUserState,
-    ) {
-        self.as_ref().render_ref(area, buf, state, user);
+    fn render_ref(&self, area: Rect, buf: &mut Buffer, user: &mut DynUserState) {
+        self.as_ref().render_ref(area, buf, user);
     }
 }
 
-impl WindowUserState for DynUserState {}
+impl WindowUserState for DynUserState {
+    fn window_state(&self) -> &WindowState {
+        self.as_ref().window_state()
+    }
+
+    fn window_state_mut(&mut self) -> &mut WindowState {
+        self.as_mut().window_state_mut()
+    }
+}

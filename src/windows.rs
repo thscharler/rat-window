@@ -4,7 +4,7 @@ use crate::window_deco::{WindowDeco, WindowDecoStyle};
 use crate::{Error, Window, WindowBuilder, WindowState, WindowUserState};
 use bimap::BiMap;
 use rat_event::{ct_event, flow, HandleEvent, MouseOnly, Outcome, Regular};
-use rat_focus::{ContainerFlag, FocusBuilder, FocusFlag, HasFocus, HasFocusFlag};
+use rat_focus::{ContainerFlag, FocusBuilder, HasFocus, HasFocusFlag};
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
 use ratatui::prelude::StatefulWidget;
@@ -71,9 +71,8 @@ where
 }
 
 struct WinStruct<T, U> {
+    // user window
     win: T,
-    // overall window state
-    state: WindowState,
     // user state
     user: U,
     // frame decoration
@@ -162,9 +161,9 @@ where
             };
 
             if let Some(tmp_area) = tmp_area.as_mut() {
-                *tmp_area = tmp_area.union(win.state.area);
+                *tmp_area = tmp_area.union(win.user.window_state().area);
             } else {
-                tmp_area = Some(win.state.area);
+                tmp_area = Some(win.user.window_state().area);
             }
         }
         let tmp_area = tmp_area.unwrap_or_default();
@@ -178,29 +177,23 @@ where
         ));
         let tmp = &mut tmp;
 
-        for WinStruct {
-            win,
-            state: win_state,
-            user: win_user,
-            deco: win_deco,
-        } in state.win.iter_mut()
-        {
+        for WinStruct { win, user, deco } in state.win.iter_mut() {
             // Find window styles.
             let mut win_deco_style = None;
             for style in self.deco_style.iter() {
-                if win_deco.style_id() == style.as_ref().type_id() {
+                if deco.style_id() == style.as_ref().type_id() {
                     win_deco_style = Some(style.as_ref());
                     break;
                 }
             }
 
             // decorations
-            let area = win_state.area;
-            win_deco.render_ref(area, tmp, win_deco_style, win_state, win_user);
+            let area = user.window_state().area;
+            deco.render_ref(area, tmp, win_deco_style, user);
 
             // content
-            let inner = win_state.inner;
-            win.render_ref(inner, tmp, win_state, win_user);
+            let inner = user.window_state().inner;
+            win.render_ref(inner, tmp, user);
         }
 
         copy_buffer(tmp, state.zero_offset, area, buf);
@@ -252,8 +245,8 @@ where
     U: HasFocus,
 {
     fn build(&self, builder: &mut FocusBuilder) {
-        for WinStruct { state, user, .. } in self.win.iter() {
-            if state.focus.is_focused() {
+        for WinStruct { user, .. } in self.win.iter() {
+            if user.window_state().focus.is_focused() {
                 builder.container(user);
             }
         }
@@ -282,8 +275,8 @@ where
         flow!({
             let mut r = Outcome::Continue;
             if self.is_focused() {
-                for WinStruct { state, user, .. } in self.win.iter_mut() {
-                    if state.focus.is_focused() {
+                for WinStruct { user, .. } in self.win.iter_mut() {
+                    if user.window_state().focus.is_focused() {
                         let u = user.handle(event, Regular);
                         r = max(r, u);
                     }
@@ -313,7 +306,7 @@ where
 
                 // Test for some draggable area.
                 self.at_hit(Position::new(*x, *y), |windows, pos, _handle, idx_win| {
-                    let win = &windows.win[idx_win].state;
+                    let win = windows.win[idx_win].user.window_state();
 
                     let areas = [
                         win.area_close,
@@ -355,7 +348,7 @@ where
                         let bounds = self.windows_area();
 
                         // move
-                        let state = &mut self.win[win_idx].state;
+                        let state = self.win[win_idx].user.window_state_mut();
                         state.area.x = (base.x + pos.x).saturating_sub(zero.x);
                         state.area.y = (base.y + pos.y).saturating_sub(zero.y);
 
@@ -474,15 +467,14 @@ where
 
         let mut st = WinStruct {
             win: builder.win,
-            state: builder.state,
             user: builder.user,
             deco: builder.deco.unwrap_or(self.default_deco.clone()),
         };
 
         // some sensible defaults...
         {
-            if st.state.area.is_empty() {
-                st.state.area = Rect::new(
+            if st.user.window_state().area.is_empty() {
+                st.user.window_state_mut().area = Rect::new(
                     self.zero_offset.x,
                     self.zero_offset.y,
                     self.area.width,
@@ -524,13 +516,13 @@ where
     pub fn try_focus_window(&mut self, h: WindowHandle) -> Result<bool, Error> {
         let idx_win = self.try_handle_idx(h)?;
 
-        let old_focus = self.win[idx_win].state.focus.is_focused();
+        let old_focus = self.win[idx_win].user.window_state().focus.is_focused();
 
         for (idx, win) in self.win.iter().enumerate() {
             if idx_win == idx {
-                win.state.focus.set(true);
+                win.user.window_state().focus.set(true);
             } else {
-                win.state.focus.set(false);
+                win.user.window_state().focus.set(false);
             }
         }
 
@@ -614,12 +606,12 @@ where
 
     pub fn window_state(&self, handle: WindowHandle) -> &WindowState {
         let idx = self.try_handle_idx(handle).expect("valid idx");
-        &self.win[idx].state
+        &self.win[idx].user.window_state()
     }
 
     pub fn try_window_state(&self, handle: WindowHandle) -> Result<&WindowState, Error> {
         let idx = self.try_handle_idx(handle)?;
-        Ok(&self.win[idx].state)
+        Ok(&self.win[idx].user.window_state())
     }
 
     pub fn user_state(&self, handle: WindowHandle) -> &U {
@@ -693,7 +685,7 @@ where
             let Some((idx_win, win)) = it.next() else {
                 break;
             };
-            if win.state.area.contains(pos) {
+            if win.user.window_state().area.contains(pos) {
                 let handle = self.idx_handle(idx_win);
                 let r = f(self, pos, handle, idx_win);
                 return Some((handle, r));
@@ -726,7 +718,7 @@ where
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WinStruct")
             .field("win", &self.win)
-            .field("state", &self.state)
+            .field("user", &self.user)
             .field("frame", &"..dyn..")
             .field("frame_style", &"..dyn..")
             .finish()

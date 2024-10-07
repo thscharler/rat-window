@@ -1,5 +1,5 @@
 use crate::window_deco::WindowDeco;
-use crate::{Window, WindowState, WindowUserState};
+use crate::{Window, WindowUserState};
 use ratatui::layout::Rect;
 use std::fmt::{Debug, Formatter};
 use std::rc::Rc;
@@ -11,7 +11,6 @@ where
     U: WindowUserState,
 {
     pub(crate) win: T,
-    pub(crate) state: WindowState,
     pub(crate) user: U,
     pub(crate) deco: Option<Rc<dyn WindowDeco>>,
 }
@@ -24,7 +23,7 @@ where
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WindowBuilder")
             .field("win", &self.win)
-            .field("state", &self.state)
+            .field("user", &self.user)
             .field("deco", &"..dyn..")
             .finish()
     }
@@ -39,38 +38,37 @@ where
         Self {
             win,
             user,
-            state: Default::default(),
             deco: None,
         }
     }
 
     pub fn area(mut self, area: Rect) -> Self {
-        self.state.area = area;
+        self.user.window_state_mut().area = area;
         self
     }
 
     pub fn title(mut self, title: impl Into<String>) -> Self {
-        self.state.title = title.into();
+        self.user.window_state_mut().title = title.into();
         self
     }
 
     pub fn modal(mut self, modal: bool) -> Self {
-        self.state.modal = modal;
+        self.user.window_state_mut().modal = modal;
         self
     }
 
     pub fn closeable(mut self, closeable: bool) -> Self {
-        self.state.closeable = closeable;
+        self.user.window_state_mut().closeable = closeable;
         self
     }
 
     pub fn resizable(mut self, resizable: bool) -> Self {
-        self.state.resizable = resizable;
+        self.user.window_state_mut().resizable = resizable;
         self
     }
 
     pub fn moveable(mut self, moveable: bool) -> Self {
-        self.state.moveable = moveable;
+        self.user.window_state_mut().moveable = moveable;
         self
     }
 

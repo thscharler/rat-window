@@ -12,17 +12,15 @@ where
     fn state_id(&self) -> TypeId;
 
     /// Render
-    fn render_ref(
-        &self,
-        area: Rect,
-        buf: &mut Buffer,
-        win_state: &mut WindowState,
-        win_user: &mut U,
-    );
+    fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut U);
 }
 
 pub trait WindowUserState: Any {
-    // no extras
+    /// Access to the window state stored in the user state.
+    fn window_state(&self) -> &WindowState;
+
+    /// Access to the window state stored in the user state.
+    fn window_state_mut(&mut self) -> &mut WindowState;
 }
 
 impl<U> dyn Window<U>
@@ -49,8 +47,6 @@ where
         }
     }
 }
-
-impl WindowUserState for () {}
 
 impl dyn WindowUserState {
     /// down cast Any style.

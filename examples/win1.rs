@@ -1,13 +1,12 @@
 use crate::mini_salsa::theme::THEME;
 use crate::mini_salsa::{run_ui, setup_logging, MiniSalsaState};
-use log::debug;
-use rat_event::{ct_event, try_flow, ConsumedEvent, HandleEvent, MouseOnly, Outcome, Regular};
+use rat_event::{ct_event, ConsumedEvent, HandleEvent, MouseOnly, Outcome, Regular};
 use rat_focus::{FocusBuilder, FocusFlag, HasFocus, HasFocusFlag};
 use rat_window::deco::{One, OneStyle};
 use rat_window::utils::fill_buf_area;
 use rat_window::{
-    DynEventUserState, DynEventWindow, DynUserState, DynWindow, EventUserState, Window,
-    WindowBuilder, WindowState, WindowUserState, Windows, WindowsState,
+    DynEventUserState, DynEventWindow, EventUserState, Window, WindowBuilder, WindowState,
+    WindowUserState, Windows, WindowsState,
 };
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
@@ -121,6 +120,8 @@ struct MinWin {
 
 struct MinWinState {
     msg: String,
+
+    window: WindowState,
     focus: FocusFlag,
 }
 
@@ -144,26 +145,28 @@ impl Window<DynEventUserState> for MinWin {
         TypeId::of::<MinWinState>()
     }
 
-    fn render_ref(
-        &self,
-        area: Rect,
-        buf: &mut Buffer,
-        win_state: &mut WindowState,
-        win_user: &mut DynEventUserState,
-    ) {
-        let win_user = win_user.downcast_mut::<MinWinState>();
+    fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut DynEventUserState) {
+        let state = state.downcast_mut::<MinWinState>();
 
         fill_buf_area(buf, area, &self.fill.to_string(), Style::default());
 
-        if win_state.focus.is_focused() {
-            (&win_user.msg).render(area, buf);
+        if state.window_state().focus.is_focused() {
+            (&state.msg).render(area, buf);
         } else {
-            (&win_user.msg).render(area, buf);
+            (&state.msg).render(area, buf);
         }
     }
 }
 
-impl WindowUserState for MinWinState {}
+impl WindowUserState for MinWinState {
+    fn window_state(&self) -> &WindowState {
+        &self.window
+    }
+
+    fn window_state_mut(&mut self) -> &mut WindowState {
+        &mut self.window
+    }
+}
 
 impl EventUserState for MinWinState {}
 
@@ -174,7 +177,7 @@ impl HasFocus for MinWinState {
 }
 
 impl HandleEvent<crossterm::event::Event, MouseOnly, Outcome> for MinWinState {
-    fn handle(&mut self, event: &crossterm::event::Event, qualifier: MouseOnly) -> Outcome {
+    fn handle(&mut self, _event: &crossterm::event::Event, _qualifier: MouseOnly) -> Outcome {
         // debug!("win1 mouse only");
         Outcome::Continue
     }
@@ -192,6 +195,7 @@ impl MinWinState {
     fn new(c: char, msg: impl Into<String>) -> Self {
         Self {
             msg: msg.into(),
+            window: Default::default(),
             focus: FocusFlag::named(format!("{}", c).as_str()),
         }
     }

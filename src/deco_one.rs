@@ -2,8 +2,8 @@ use crate::_private::NonExhaustive;
 use crate::deco::deco_one_layout;
 use crate::utils::fill_buf_area;
 use crate::window_deco::{WindowDeco, WindowDecoStyle};
-use crate::{WindowState, WindowUserState};
-use rat_focus::{HasFocus, HasFocusFlag};
+use crate::WindowUserState;
+use rat_focus::HasFocusFlag;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Style, Stylize};
@@ -34,19 +34,22 @@ impl WindowDeco for One {
         area: Rect,
         buf: &mut Buffer,
         win_style: Option<&dyn WindowDecoStyle>,
-        win_state: &mut WindowState,
-        _win_user: &mut dyn WindowUserState,
+        win_user: &mut dyn WindowUserState,
     ) {
         let one_style = OneStyle::default();
         let win_style = win_style
             .map(|v| v.downcast_ref::<OneStyle>())
             .unwrap_or(&one_style);
 
-        deco_one_layout(area, win_style.block.inner(area), win_state);
+        deco_one_layout(
+            area,
+            win_style.block.inner(area),
+            win_user.window_state_mut(),
+        );
 
         win_style.block.clone().render(area, buf);
 
-        let style = if win_state.focus.is_focused() {
+        let style = if win_user.window_state().focus.is_focused() {
             if let Some(focus_style) = win_style.focus_style {
                 focus_style
             } else if let Some(title_style) = win_style.title_style {
@@ -66,17 +69,17 @@ impl WindowDeco for One {
         if let Some(cell) = buf.cell_mut((area.left(), area.top())) {
             cell.set_symbol("\u{2590}");
         }
-        fill_buf_area(buf, win_state.area_title, " ", style);
+        fill_buf_area(buf, win_user.window_state().area_title, " ", style);
         if let Some(cell) = buf.cell_mut((area.right() - 1, area.top())) {
             cell.set_symbol("\u{258C}");
         }
 
-        Text::from(win_state.title.as_str())
+        Text::from(win_user.window_state().title.as_str())
             .style(style)
             .alignment(alignment)
-            .render(win_state.area_title, buf);
+            .render(win_user.window_state().area_title, buf);
 
-        Span::from("[\u{2A2F}]").render(win_state.area_close, buf);
+        Span::from("[\u{2A2F}]").render(win_user.window_state().area_close, buf);
     }
 }
 

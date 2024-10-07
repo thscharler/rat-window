@@ -17,8 +17,6 @@ pub trait EventUserState:
 pub type DynEventUserState = Box<dyn EventUserState + 'static>;
 pub type DynEventWindow = Box<dyn Window<DynEventUserState> + 'static>;
 
-impl EventUserState for () {}
-
 impl dyn EventUserState {
     /// down cast Any style.
     pub fn downcast_ref<R: EventUserState>(&self) -> &R {
@@ -46,18 +44,20 @@ impl Window<DynEventUserState> for DynEventWindow {
         self.as_ref().state_id()
     }
 
-    fn render_ref(
-        &self,
-        area: Rect,
-        buf: &mut Buffer,
-        state: &mut WindowState,
-        user: &mut DynEventUserState,
-    ) {
-        self.as_ref().render_ref(area, buf, state, user);
+    fn render_ref(&self, area: Rect, buf: &mut Buffer, user: &mut DynEventUserState) {
+        self.as_ref().render_ref(area, buf, user);
     }
 }
 
-impl WindowUserState for DynEventUserState {}
+impl WindowUserState for DynEventUserState {
+    fn window_state(&self) -> &WindowState {
+        self.as_ref().window_state()
+    }
+
+    fn window_state_mut(&mut self) -> &mut WindowState {
+        self.as_mut().window_state_mut()
+    }
+}
 impl EventUserState for DynEventUserState {}
 
 impl HasFocus for DynEventUserState {

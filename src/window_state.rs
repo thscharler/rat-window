@@ -1,3 +1,4 @@
+use crate::WindowUserState;
 use rat_focus::FocusFlag;
 use ratatui::layout::Rect;
 
@@ -87,6 +88,16 @@ impl Default for WindowState {
             moveable: true,
             focus: FocusFlag::named("window"),
         }
+    }
+}
+
+impl WindowUserState for WindowState {
+    fn window_state(&self) -> &WindowState {
+        self
+    }
+
+    fn window_state_mut(&mut self) -> &mut WindowState {
+        self
     }
 }
 

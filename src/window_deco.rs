@@ -15,7 +15,6 @@ pub trait WindowDeco: Any {
         area: Rect,
         buf: &mut Buffer,
         win_style: Option<&dyn WindowDecoStyle>,
-        win_state: &mut WindowState,
         win_user: &mut dyn WindowUserState,
     );
 }
