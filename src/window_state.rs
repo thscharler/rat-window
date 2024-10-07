@@ -85,7 +85,7 @@ impl Default for WindowState {
             closeable: true,
             resizable: true,
             moveable: true,
-            focus: Default::default(),
+            focus: FocusFlag::named("window"),
         }
     }
 }

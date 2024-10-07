@@ -1,8 +1,8 @@
 use crate::mini_salsa::theme::THEME;
 use crate::mini_salsa::{run_ui, setup_logging, MiniSalsaState};
 use log::debug;
-use rat_event::{ct_event, try_flow, HandleEvent, MouseOnly, Outcome, Regular};
-use rat_focus::{FocusBuilder, HasFocus, HasFocusFlag};
+use rat_event::{ct_event, try_flow, ConsumedEvent, HandleEvent, MouseOnly, Outcome, Regular};
+use rat_focus::{FocusBuilder, FocusFlag, HasFocus, HasFocusFlag};
 use rat_window::deco::{One, OneStyle};
 use rat_window::utils::fill_buf_area;
 use rat_window::{
@@ -16,6 +16,7 @@ use ratatui::style::Style;
 use ratatui::widgets::{Block, BorderType, StatefulWidget};
 use ratatui::Frame;
 use std::any::TypeId;
+use std::cmp::max;
 use std::fmt::Debug;
 
 mod mini_salsa;
@@ -57,7 +58,6 @@ fn repaint_windows(
     ])
     .split(layout[0]);
 
-    // frame.buffer_mut().set_style(hlayout[0], THEME.black(2));
     fill_buf_area(frame.buffer_mut(), hlayout[0], " ", THEME.black(2));
     Windows::new()
         .deco(OneStyle {
@@ -80,25 +80,39 @@ fn handle_windows(
     _istate: &mut MiniSalsaState,
     state: &mut State,
 ) -> Result<Outcome, anyhow::Error> {
-    try_flow!(match event {
+    let mut b = FocusBuilder::new(None).enable_log();
+    b.container(state);
+    let mut focus = b.build();
+    focus.enable_log();
+    let f = focus.handle(event, Regular);
+
+    let r = match event {
         ct_event!(keycode press F(2)) => {
             let c = (rand::random::<u8>() % 26 + b'a') as char;
             state.win.show(
                 WindowBuilder::new(
                     MinWin::new().fill(c).boxed(),
-                    MinWinState::new(format!(" {} ", rand::random::<u8>())).boxed(),
+                    MinWinState::new(c, format!(" {} ", rand::random::<u8>())).boxed(),
                 )
                 .area(Rect::new(10, 10, 15, 20)),
             );
             Outcome::Changed
         }
         _ => Outcome::Continue,
-    });
+    };
 
-    try_flow!(state.win.handle(event, Regular));
+    let r = r.or_else(|| state.win.handle(event, Regular));
 
-    Ok(Outcome::Continue)
+    Ok(max(f, r))
 }
+
+impl HasFocus for State {
+    fn build(&self, builder: &mut FocusBuilder) {
+        builder.container(&self.win);
+    }
+}
+
+// -------------------------------------------------------------
 
 #[derive(Debug, Default)]
 struct MinWin {
@@ -107,6 +121,7 @@ struct MinWin {
 
 struct MinWinState {
     msg: String,
+    focus: FocusFlag,
 }
 
 impl MinWin {
@@ -154,28 +169,31 @@ impl EventUserState for MinWinState {}
 
 impl HasFocus for MinWinState {
     fn build(&self, builder: &mut FocusBuilder) {
-        todo!()
+        builder.widget(&self.focus);
     }
 }
 
 impl HandleEvent<crossterm::event::Event, MouseOnly, Outcome> for MinWinState {
     fn handle(&mut self, event: &crossterm::event::Event, qualifier: MouseOnly) -> Outcome {
-        debug!("win1 mouse only");
+        // debug!("win1 mouse only");
         Outcome::Continue
     }
 }
 
 impl HandleEvent<crossterm::event::Event, Regular, Outcome> for MinWinState {
     fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> Outcome {
-        debug!("win1 regular");
+        // debug!("win1 regular");
         self.msg = format!("{:?}", event);
         Outcome::Changed
     }
 }
 
 impl MinWinState {
-    fn new(msg: impl Into<String>) -> Self {
-        Self { msg: msg.into() }
+    fn new(c: char, msg: impl Into<String>) -> Self {
+        Self {
+            msg: msg.into(),
+            focus: FocusFlag::named(format!("{}", c).as_str()),
+        }
     }
 
     fn boxed(self) -> DynEventUserState {

@@ -4,7 +4,7 @@ use crate::window_deco::{WindowDeco, WindowDecoStyle};
 use crate::{Error, Window, WindowBuilder, WindowState, WindowUserState};
 use bimap::BiMap;
 use rat_event::{ct_event, flow, HandleEvent, MouseOnly, Outcome, Regular};
-use rat_focus::{ContainerFlag, FocusBuilder, HasFocus, HasFocusFlag};
+use rat_focus::{ContainerFlag, FocusBuilder, FocusFlag, HasFocus, HasFocusFlag};
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
 use ratatui::prelude::StatefulWidget;
@@ -236,7 +236,7 @@ where
             area: Default::default(),
             zero_offset: Default::default(),
             default_deco: Rc::new(One),
-            focus: Default::default(),
+            focus: ContainerFlag::named("windows"),
             max_id: 0,
             win_handle: Default::default(),
             win: vec![],
@@ -281,14 +281,14 @@ where
 
         flow!({
             let mut r = Outcome::Continue;
-            //if self.is_focused() {
-            for WinStruct { state, user, .. } in self.win.iter_mut() {
-                if state.focus.is_focused() {
-                    let u = user.handle(event, Regular);
-                    r = max(r, u);
+            if self.is_focused() {
+                for WinStruct { state, user, .. } in self.win.iter_mut() {
+                    if state.focus.is_focused() {
+                        let u = user.handle(event, Regular);
+                        r = max(r, u);
+                    }
                 }
             }
-            //}
             r
         });
 
