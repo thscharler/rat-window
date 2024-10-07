@@ -1,21 +1,21 @@
 use crate::mini_salsa::theme::THEME;
 use crate::mini_salsa::{run_ui, setup_logging, MiniSalsaState};
-use log::debug;
 use rat_event::{ct_event, try_flow, HandleEvent, Outcome, Regular};
 use rat_focus::HasFocusFlag;
 use rat_window::deco::{One, OneStyle};
 use rat_window::utils::fill_buf_area;
-use rat_window::{Window, WindowBuilder, WindowState, WindowUserState, Windows, WindowsState};
+use rat_window::{
+    DynUserState, DynWindow, Window, WindowBuilder, WindowState, WindowUserState, Windows,
+    WindowsState,
+};
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::prelude::Widget;
 use ratatui::style::Style;
-use ratatui::widgets::{Block, BorderType, StatefulWidget, StatefulWidgetRef};
+use ratatui::widgets::{Block, BorderType, StatefulWidget};
 use ratatui::Frame;
-use std::any::{Any, TypeId};
-use std::cell::RefCell;
+use std::any::TypeId;
 use std::fmt::Debug;
-use std::rc::Rc;
 
 mod mini_salsa;
 
@@ -32,9 +32,6 @@ fn main() -> Result<(), anyhow::Error> {
 }
 
 struct Data {}
-
-type DynUserState = Box<dyn WindowUserState + 'static>;
-type DynWindow = Box<dyn Window<DynUserState> + 'static>;
 
 struct State {
     win: WindowsState<DynWindow, DynUserState>,

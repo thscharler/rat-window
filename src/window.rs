@@ -1,9 +1,7 @@
 use crate::WindowState;
-use log::debug;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use std::any::{Any, TypeId};
-use std::fmt::Debug;
 
 /// Trait for a window.
 pub trait Window<U>: Any
@@ -52,38 +50,9 @@ where
     }
 }
 
-impl<U> Window<U> for Box<dyn Window<U> + 'static>
-where
-    U: WindowUserState,
-{
-    fn state_id(&self) -> TypeId {
-        self.as_ref().state_id()
-    }
-
-    fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut WindowState, user: &mut U) {
-        self.as_ref().render_ref(area, buf, state, user);
-    }
-}
-
-impl WindowUserState for Box<dyn WindowUserState + 'static> {}
-
-impl<T: WindowUserState> WindowUserState for Box<T> {}
-
 impl WindowUserState for () {}
 
 impl dyn WindowUserState {
-    /// down cast for Box<dyn WindowUserState
-    pub fn downcast_box_dyn<R: WindowUserState>(&self) -> &R {
-        let first = self.downcast_ref::<Box<dyn WindowUserState>>();
-        first.as_ref().downcast_ref::<R>()
-    }
-
-    /// down cast for Box<dyn WindowUserState
-    pub fn downcast_box_dyn_mut<R: WindowUserState>(&mut self) -> &mut R {
-        let first = self.downcast_mut::<Box<dyn WindowUserState>>();
-        first.as_mut().downcast_mut::<R>()
-    }
-
     /// down cast Any style.
     pub fn downcast_ref<R: WindowUserState>(&self) -> &R {
         if self.type_id() == TypeId::of::<R>() {

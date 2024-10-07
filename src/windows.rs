@@ -310,7 +310,7 @@ where
                         let bounds = self.windows_area();
 
                         // move
-                        let mut state = &mut self.win[win_idx].state;
+                        let state = &mut self.win[win_idx].state;
                         state.area.x = (base.x + pos.x).saturating_sub(zero.x);
                         state.area.y = (base.y + pos.y).saturating_sub(zero.y);
 
