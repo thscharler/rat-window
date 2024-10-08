@@ -11,7 +11,7 @@ use ratatui::text::{Span, Text};
 use ratatui::widgets::{Block, Widget};
 use std::any::TypeId;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct One;
 
 #[derive(Debug, Clone)]
@@ -29,6 +29,7 @@ impl WindowDeco for One {
         TypeId::of::<OneStyle>()
     }
 
+    #[allow(clippy::collapsible_else_if)]
     fn render_ref(
         &self,
         area: Rect,

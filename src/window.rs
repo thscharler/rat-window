@@ -42,7 +42,7 @@ impl<U: WindowState> dyn Window<State = U> {
 
     /// down cast Any style.
     pub fn downcast_mut<R: Window<State = U>>(&'_ mut self) -> Option<&'_ mut R> {
-        if (&*self).type_id() == TypeId::of::<R>() {
+        if (*self).type_id() == TypeId::of::<R>() {
             let p: *mut dyn Window<State = U> = self;
             Some(unsafe { &mut *(p as *mut R) })
         } else {
@@ -64,7 +64,7 @@ impl dyn WindowState {
 
     /// down cast Any style.
     pub fn downcast_mut<R: WindowState>(&mut self) -> &mut R {
-        if (&*self).type_id() == TypeId::of::<R>() {
+        if (*self).type_id() == TypeId::of::<R>() {
             let p: *mut dyn WindowState = self;
             unsafe { &mut *(p as *mut R) }
         } else {

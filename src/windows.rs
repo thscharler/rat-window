@@ -93,7 +93,7 @@ enum WinMouseArea {
     Left,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 struct WinMouseFlags {
     drag_base: Option<Rect>,
     drag_zero: Option<Position>,
@@ -322,7 +322,7 @@ where
                         win.area_resize_left,
                     ];
                     for (idx_area, area) in areas.iter().enumerate() {
-                        if area.contains(pos.into()) {
+                        if area.contains(pos) {
                             windows.mouse.drag_zero = Some(pos);
                             windows.mouse.drag_base = Some(win.area);
                             windows.mouse.drag_win = Some(idx_win);
@@ -605,13 +605,13 @@ where
     /// Panics for an invalid handle.
     pub fn find_window_state(&self, handle: WindowHandle) -> &WindowSysState {
         let idx = self.try_handle_idx(handle).expect("valid idx");
-        &self.win[idx].user.window()
+        self.win[idx].user.window()
     }
 
     /// Get window state.
     pub fn try_find_window_state(&self, handle: WindowHandle) -> Result<&WindowSysState, Error> {
         let idx = self.try_handle_idx(handle)?;
-        Ok(&self.win[idx].user.window())
+        Ok(self.win[idx].user.window())
     }
 
     /// Get window user state.
@@ -751,17 +751,6 @@ impl From<usize> for WinMouseArea {
             8 => WinMouseArea::BottomLeft,
             9 => WinMouseArea::Left,
             _ => unreachable!(),
-        }
-    }
-}
-
-impl Default for WinMouseFlags {
-    fn default() -> Self {
-        Self {
-            drag_base: None,
-            drag_zero: None,
-            drag_win: None,
-            drag_area: None,
         }
     }
 }

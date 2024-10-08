@@ -86,7 +86,7 @@ impl dyn EventUserState {
 
     /// down cast Any style.
     pub fn downcast_mut<R: EventUserState>(&mut self) -> &mut R {
-        if (&*self).type_id() == TypeId::of::<R>() {
+        if (*self).type_id() == TypeId::of::<R>() {
             let p: *mut dyn EventUserState = self;
             unsafe { &mut *(p as *mut R) }
         } else {
