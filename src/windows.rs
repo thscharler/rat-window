@@ -277,7 +277,7 @@ where
 
         // forward to focus
         let mut r1 = Outcome::Continue;
-        if self.is_focused() {
+        if self.is_container_focused() {
             for WinStruct { user, .. } in self.win.iter_mut() {
                 if user.window().focus.is_focused() {
                     let u = user.handle(event, Regular);
