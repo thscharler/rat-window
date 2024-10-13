@@ -25,7 +25,13 @@ fn main() -> Result<(), anyhow::Error> {
         win: WindowsState::new().zero_offset(3, 3).deco(One),
     };
 
-    run_ui(handle_windows, repaint_windows, &mut data, &mut state)
+    run_ui(
+        "win1",
+        handle_windows,
+        repaint_windows,
+        &mut data,
+        &mut state,
+    )
 }
 
 struct Data {}

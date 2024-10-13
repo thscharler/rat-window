@@ -60,3 +60,4 @@ rat-focus = { version = "0.25", path = "../rat-focus" }
 anyhow = "1.0.82"
 fern = "0.6"
 rand = "0.8"
+unicode-segmentation = "1.11"
