@@ -4,7 +4,7 @@ use crate::window_deco::{WindowDeco, WindowDecoStyle};
 use crate::{Error, Window, WindowBuilder, WindowState, WindowSysState};
 use bimap::BiMap;
 use rat_event::{ct_event, HandleEvent, MouseOnly, Outcome, Regular};
-use rat_focus::{ContainerFlag, FocusBuilder, HasFocus, HasFocusFlag};
+use rat_focus::{ContainerFlag, FocusBuilder, HasFocus, IsFocusContainer};
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
 use ratatui::prelude::StatefulWidget;
@@ -240,11 +240,11 @@ where
     }
 }
 
-impl<T, U> HasFocus for WindowsState<T, U>
+impl<T, U> IsFocusContainer for WindowsState<T, U>
 where
     T: Window<State = U>,
     U: WindowState,
-    U: HasFocus,
+    U: IsFocusContainer,
 {
     fn build(&self, builder: &mut FocusBuilder) {
         for WinStruct { user, .. } in self.win.iter() {
@@ -267,7 +267,7 @@ impl<T, U> HandleEvent<crossterm::event::Event, Regular, Outcome> for WindowsSta
 where
     T: Window<State = U>,
     U: WindowState,
-    U: HasFocus,
+    U: IsFocusContainer,
     U: HandleEvent<crossterm::event::Event, Regular, Outcome>,
     U: HandleEvent<crossterm::event::Event, MouseOnly, Outcome>,
 {

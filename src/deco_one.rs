@@ -3,7 +3,7 @@ use crate::deco::deco_one_layout;
 use crate::utils::fill_buf_area;
 use crate::window_deco::{WindowDeco, WindowDecoStyle};
 use crate::WindowState;
-use rat_focus::HasFocusFlag;
+use rat_focus::HasFocus;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Style, Stylize};

@@ -3,7 +3,7 @@ use crate::min_win::{MinWin, MinWinState};
 use crate::mini_salsa::theme::THEME;
 use crate::mini_salsa::{run_ui, setup_logging, MiniSalsaState};
 use rat_event::{ct_event, ConsumedEvent, HandleEvent, Outcome, Regular};
-use rat_focus::{FocusBuilder, HasFocus};
+use rat_focus::{FocusBuilder, IsFocusContainer};
 use rat_window::box_dyn_event::{DynEventUserState, DynEventWindow};
 use rat_window::deco::{One, OneStyle};
 use rat_window::utils::fill_buf_area;
@@ -120,7 +120,7 @@ fn handle_windows(
     Ok(max(f, r))
 }
 
-impl HasFocus for State {
+impl IsFocusContainer for State {
     fn build(&self, builder: &mut FocusBuilder) {
         builder.container(&self.win);
     }
@@ -130,7 +130,7 @@ impl HasFocus for State {
 
 pub mod min_win {
     use rat_event::{HandleEvent, MouseOnly, Outcome, Regular};
-    use rat_focus::{FocusBuilder, FocusFlag, HasFocus, HasFocusFlag};
+    use rat_focus::{FocusBuilder, FocusFlag, HasFocus, IsFocusContainer};
     use rat_window::box_dyn_event::{DynEventUserState, DynEventWindow, EventUserState};
     use rat_window::utils::fill_buf_area;
     use rat_window::{Window, WindowState, WindowSysState};
@@ -202,7 +202,7 @@ pub mod min_win {
         }
     }
 
-    impl HasFocus for MinWinState {
+    impl IsFocusContainer for MinWinState {
         fn build(&self, builder: &mut FocusBuilder) {
             builder.widget(&self.focus);
         }
@@ -238,7 +238,7 @@ pub mod min_win {
 
 pub mod max_win {
     use rat_event::{ct_event, HandleEvent, MouseOnly, Outcome, Regular};
-    use rat_focus::{FocusBuilder, FocusFlag, HasFocus, HasFocusFlag};
+    use rat_focus::{FocusBuilder, FocusFlag, HasFocus, IsFocusContainer};
     use rat_window::box_dyn_event::{DynEventUserState, DynEventWindow, EventUserState};
     use rat_window::utils::fill_buf_area;
     use rat_window::{Window, WindowState, WindowSysState};
@@ -304,7 +304,7 @@ pub mod max_win {
         }
     }
 
-    impl HasFocus for MaxWinState {
+    impl IsFocusContainer for MaxWinState {
         fn build(&self, builder: &mut FocusBuilder) {
             builder.widget(&self.focus);
         }
