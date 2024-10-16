@@ -54,7 +54,7 @@ bimap = "0.6.3"
 anyhow = "1.0.82"
 
 rat-event = { version = "0.25", path = "../rat-event" }
-rat-focus = { version = "0.26", path = "../rat-focus" }
+rat-focus = { version = "0.27", path = "../rat-focus" }
 
 [dev-dependencies]
 anyhow = "1.0.82"
