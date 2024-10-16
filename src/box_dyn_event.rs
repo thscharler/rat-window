@@ -5,7 +5,7 @@
 //!
 use crate::{Window, WindowState, WindowSysState};
 use rat_event::{HandleEvent, MouseOnly, Outcome, Regular};
-use rat_focus::{FocusBuilder, IsFocusContainer};
+use rat_focus::{FocusBuilder, FocusContainer};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::widgets::StatefulWidgetRef;
@@ -14,7 +14,7 @@ use std::any::TypeId;
 /// User state for widgets with event-handling.
 pub trait EventUserState:
     WindowState
-    + IsFocusContainer
+    + FocusContainer
     + HandleEvent<crossterm::event::Event, Regular, Outcome>
     + HandleEvent<crossterm::event::Event, MouseOnly, Outcome>
 {
@@ -55,7 +55,7 @@ impl WindowState for DynEventUserState {
 
 impl EventUserState for DynEventUserState {}
 
-impl IsFocusContainer for DynEventUserState {
+impl FocusContainer for DynEventUserState {
     fn build(&self, builder: &mut FocusBuilder) {
         self.as_ref().build(builder);
     }
