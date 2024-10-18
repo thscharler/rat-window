@@ -1,5 +1,7 @@
 > This is currently alpha.
 
+* [Changes](https://github.com/thscharler/rat-window/blob/master/changes.md)
+
 # rat-window
 
 This can manage and render windows in the terminal.
