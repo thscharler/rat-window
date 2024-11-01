@@ -1,6 +1,6 @@
 [package]
 name = "rat-window"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["thscharler <thscharler@gmail.com>"]
 description = "windows in the terminal with ratatui"
@@ -51,13 +51,13 @@ log = "0.4"
 bimap = "0.6.3"
 #as-any = "0.3.1"
 #dyn-clone = "1.0.17"
-anyhow = "1.0.82"
+anyhow = "1.0"
 
-rat-event = { version = "0.25", path = "../rat-event" }
-rat-focus = { version = "0.27", path = "../rat-focus" }
+rat-event = { version = "0.26", path = "../rat-event" }
+rat-focus = { version = "0.28", path = "../rat-focus" }
 
 [dev-dependencies]
-anyhow = "1.0.82"
-fern = "0.6"
+anyhow = "1.0"
+fern = "0.7"
 rand = "0.8"
 unicode-segmentation = "1.11"
