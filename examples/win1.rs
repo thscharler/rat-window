@@ -5,7 +5,7 @@ use crate::mini_salsa::{run_ui, setup_logging, MiniSalsaState};
 use log::debug;
 use rat_event::{ct_event, ConsumedEvent, HandleEvent, Outcome, Regular};
 use rat_focus::{FocusBuilder, FocusContainer};
-use rat_window3::{DecoOne, WinCtState, Windows, WindowsState};
+use rat_window::{DecoOne, WinCtState, Windows, WindowsState};
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::widgets::{Block, BorderType, StatefulWidget};
 use ratatui::Frame;
@@ -130,7 +130,7 @@ pub mod min_win {
     use crossterm::event::Event;
     use log::debug;
     use rat_event::{ct_event, HandleEvent, Outcome, Regular};
-    use rat_window3::{WinCtState, WinFlags, WinHandle, WinState, WinWidget};
+    use rat_window::{WinCtState, WinFlags, WinHandle, WinState, WinWidget};
     use ratatui::buffer::Buffer;
     use ratatui::layout::{Position, Rect};
     use ratatui::widgets::StatefulWidgetRef;
@@ -215,12 +215,11 @@ pub mod max_win {
     use crate::mini_salsa::theme::THEME;
     use crossterm::event::Event;
     use rat_event::{ct_event, HandleEvent, Outcome, Regular};
-    use rat_window3::{WinCtState, WinFlags, WinHandle, WinState, WinWidget};
+    use rat_window::{WinCtState, WinFlags, WinHandle, WinState, WinWidget};
     use ratatui::buffer::Buffer;
     use ratatui::layout::Rect;
     use ratatui::prelude::Widget;
     use ratatui::text::Line;
-    use ratatui::widgets::StatefulWidgetRef;
     use std::cell::RefCell;
     use std::rc::Rc;
 
