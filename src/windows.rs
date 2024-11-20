@@ -1,9 +1,8 @@
 use crate::deco_one::{DecoOne, DecoOneState};
 use crate::WinState;
 use crossterm::event::MouseEvent;
-use rat_focus::ContainerFlag;
 use ratatui::buffer::Buffer;
-use ratatui::layout::{Position, Rect, Size};
+use ratatui::layout::{Position, Rect};
 use ratatui::prelude::StatefulWidget;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -138,7 +137,7 @@ where
     }
 
     pub fn is_window_focused(&self, handle: WinHandle) -> bool {
-        self.manager_state.borrow().window_is_focused(handle)
+        self.manager_state.borrow().is_window_focused(handle)
     }
 
     pub fn focused_window(&self) -> Option<WinHandle> {
@@ -146,7 +145,7 @@ where
     }
 
     pub fn set_focused_window(&self, handle: WinHandle) -> bool {
-        self.manager_state.borrow_mut().focus_window(handle)
+        self.manager_state.borrow_mut().set_focused_window(handle)
     }
 
     pub fn windows(&self) -> Vec<WinHandle> {
@@ -154,8 +153,12 @@ where
     }
 
     /// Window at the given __screen__ coordinates.
-    pub fn window_at(&self, position: Position) -> Option<WinHandle> {
-        self.manager_state.borrow().window_at(position)
+    pub fn window_at(&self, pos: Position) -> Option<WinHandle> {
+        let manager_state = self.manager_state.borrow();
+        let Some(pos) = manager_state.screen_to_win(pos) else {
+            return None;
+        };
+        manager_state.window_at(pos)
     }
 
     pub fn open_window(&self, window: Rc<RefCell<T>>, area: Rect) -> WinHandle {

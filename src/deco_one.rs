@@ -8,6 +8,7 @@ use ratatui::layout::{Alignment, Position, Rect, Size};
 use ratatui::prelude::{BlockExt, Style};
 use ratatui::text::{Span, Text};
 use ratatui::widgets::{Block, Widget, WidgetRef};
+use std::cmp::max;
 use std::collections::HashMap;
 use std::mem;
 
@@ -293,7 +294,7 @@ impl DecoOneState {
         self.meta.get_mut(&handle).expect("window").widget_area = area;
     }
 
-    pub fn window_is_focused(&self, handle: WinHandle) -> bool {
+    pub fn is_window_focused(&self, handle: WinHandle) -> bool {
         self.meta
             .get(&handle)
             .expect("window")
@@ -302,7 +303,7 @@ impl DecoOneState {
             .is_focused()
     }
 
-    pub fn focus_window(&mut self, handle: WinHandle) -> bool {
+    pub fn set_focused_window(&mut self, handle: WinHandle) -> bool {
         for meta in self.meta.values_mut() {
             meta.flags.focus.clear();
         }
@@ -317,30 +318,36 @@ impl DecoOneState {
 
     pub fn focused_window(&self) -> Option<WinHandle> {
         for handle in self.order.iter().rev().copied() {
-            if self.window_is_focused(handle) {
+            if self.is_window_focused(handle) {
                 return Some(handle);
             }
         }
         None
     }
 
+    /// Returns a list of handles in render order bottom-z to top-z.
     pub fn windows(&self) -> Vec<WinHandle> {
         self.order.clone()
     }
 
+    /// Move a window to front.
     pub fn window_to_front(&mut self, handle: WinHandle) -> bool {
-        self.order.retain(|v| *v != handle);
-        self.order.push(handle);
-        true
+        if self.order.last() == Some(&handle) {
+            false
+        } else {
+            self.order.retain(|v| *v != handle);
+            self.order.push(handle);
+            true
+        }
     }
 }
 
 impl DecoOneState {
-    /// Window at the given __screen__ position.
-    pub fn window_at(&self, position: Position) -> Option<WinHandle> {
+    /// Window at the given __window__ position.
+    pub fn window_at(&self, pos: Position) -> Option<WinHandle> {
         for handle in self.order.iter().rev().copied() {
             let area = self.window_area(handle);
-            if area.contains(position) {
+            if area.contains(pos) {
                 return Some(handle);
             }
         }
@@ -380,7 +387,13 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
             ct_event!(mouse down Left for x,y) => {
                 let pos = Position::new(*x, *y);
                 if let Some(handle) = self.window_at(pos) {
-                    if let Some(meta) = self.meta.get(&handle) {
+                    let r0 = if let Some(handle) = self.window_at(pos) {
+                        self.window_to_front(handle).into()
+                    } else {
+                        Outcome::Continue
+                    };
+
+                    let r1 = if let Some(meta) = self.meta.get(&handle) {
                         if meta.move_area.contains(pos) {
                             self.drag_action = DragAction::Move;
                             self.drag_handle = Some(handle);
@@ -412,7 +425,17 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
                         }
                     } else {
                         Outcome::Continue
-                    }
+                    };
+
+                    max(r0, r1)
+                } else {
+                    Outcome::Continue
+                }
+            }
+            ct_event!(mouse up Left for x,y) => {
+                let pos = Position::new(*x, *y);
+                if let Some(handle) = self.window_at(pos) {
+                    self.window_to_front(handle).into()
                 } else {
                     Outcome::Continue
                 }
