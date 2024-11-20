@@ -111,7 +111,6 @@ fn handle_windows(
         _ => Outcome::Continue,
     };
 
-    debug!("handle regular");
     let r = r.or_else(|| state.win.handle(event, Regular));
 
     Ok(max(f, r))

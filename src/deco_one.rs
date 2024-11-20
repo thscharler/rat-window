@@ -1,6 +1,7 @@
 use crate::util::{copy_buffer, revert_style};
 use crate::win_flags::WinFlags;
 use crate::windows::WinHandle;
+use log::debug;
 use rat_event::{ct_event, HandleEvent, Outcome, Regular};
 use rat_focus::HasFocus;
 use ratatui::buffer::Buffer;
@@ -404,12 +405,12 @@ impl DecoOneState {
             self.area.as_size(),
         ));
 
-        let w_clip = area.width * 2 / 5;
-        let h_clip = area.width * 2 / 5;
+        let w_clip = area.width / 5;
+        let h_clip = area.height / 5;
 
         // snap-click to top
         self.resize_areas.push((
-            Rect::new(area.x + w_clip, area.y, area.width - 2 * w_clip, 2),
+            Rect::new(area.x + w_clip, area.y, area.width - 2 * w_clip, 1),
             Rect::new(area.x, area.y, area.width, area.height / 2),
         ));
         // snap-click to bottom
@@ -418,7 +419,7 @@ impl DecoOneState {
                 area.x + w_clip,
                 (area.y + area.height).saturating_sub(1),
                 area.width - 2 * w_clip,
-                2,
+                1,
             ),
             Rect::new(
                 area.x,
@@ -426,7 +427,143 @@ impl DecoOneState {
                 area.width,
                 area.height - area.height / 2,
             ),
-        ))
+        ));
+        // left
+        self.resize_areas.push((
+            Rect::new(area.x, area.y + h_clip, 1, area.height - 2 * h_clip),
+            Rect::new(area.x, area.y, area.width / 2, area.height),
+        ));
+        // alt left
+        self.resize_areas.push((
+            Rect::new(area.x + 1, area.y + h_clip, 1, area.height - 2 * h_clip),
+            Rect::new(area.x, area.y, area.width * 6 / 10, area.height),
+        ));
+        // right
+        self.resize_areas.push((
+            Rect::new(
+                (area.x + area.width).saturating_sub(1),
+                area.y + h_clip,
+                1,
+                area.height - 2 * h_clip,
+            ),
+            Rect::new(
+                area.x + area.width / 2,
+                area.y,
+                area.width - area.width / 2,
+                area.height,
+            ),
+        ));
+        // alt right
+        self.resize_areas.push((
+            Rect::new(
+                (area.x + area.width).saturating_sub(2),
+                area.y + h_clip,
+                1,
+                area.height - 2 * h_clip,
+            ),
+            Rect::new(
+                area.x + area.width * 4 / 10,
+                area.y,
+                area.width - area.width * 4 / 10,
+                area.height,
+            ),
+        ));
+        // top left
+        self.resize_areas.push((
+            Rect::new(area.x, area.y, w_clip, 1),
+            Rect::new(area.x, area.y, area.width / 2, area.height / 2),
+        ));
+        self.resize_areas.push((
+            Rect::new(area.x, area.y, 1, h_clip),
+            Rect::new(area.x, area.y, area.width / 2, area.height / 2),
+        ));
+        // top right
+        self.resize_areas.push((
+            Rect::new(
+                (area.x + area.width - w_clip).saturating_sub(1),
+                area.y,
+                w_clip,
+                1,
+            ),
+            Rect::new(
+                area.x + area.width / 2,
+                area.y,
+                area.width - area.width / 2,
+                area.height / 2,
+            ),
+        ));
+        self.resize_areas.push((
+            Rect::new(
+                (area.x + area.width).saturating_sub(1), //
+                area.y,
+                1,
+                h_clip,
+            ),
+            Rect::new(
+                area.x + area.width / 2,
+                area.y,
+                area.width - area.width / 2,
+                area.height / 2,
+            ),
+        ));
+        // bottom left
+        self.resize_areas.push((
+            Rect::new(
+                area.x, //
+                (area.y + area.height).saturating_sub(1),
+                w_clip,
+                1,
+            ),
+            Rect::new(
+                area.x,
+                area.y + area.height / 2,
+                area.width / 2,
+                area.height - area.height / 2,
+            ),
+        ));
+        self.resize_areas.push((
+            Rect::new(
+                area.x,
+                (area.y + area.height - h_clip).saturating_sub(1),
+                1,
+                h_clip,
+            ),
+            Rect::new(
+                area.x,
+                area.y + area.height / 2,
+                area.width / 2,
+                area.height - area.height / 2,
+            ),
+        ));
+        // bottom right
+        self.resize_areas.push((
+            Rect::new(
+                (area.x + area.width - w_clip).saturating_sub(1),
+                (area.y + area.height).saturating_sub(1),
+                w_clip,
+                1,
+            ),
+            Rect::new(
+                area.x + area.width / 2,
+                area.y + area.height / 2,
+                area.width - area.width / 2,
+                area.height - area.height / 2,
+            ),
+        ));
+        self.resize_areas.push((
+            Rect::new(
+                (area.x + area.width).saturating_sub(1),
+                (area.y + area.height - h_clip).saturating_sub(1),
+                1,
+                h_clip,
+            ),
+            Rect::new(
+                area.x + area.width / 2,
+                area.y + area.height / 2,
+                area.width - area.width / 2,
+                area.height - area.height / 2,
+            ),
+        ));
     }
 
     fn calculate_resize_left(&self, mut area: Rect, pos: Position) -> Rect {
@@ -477,9 +614,10 @@ impl DecoOneState {
 
         let mut hit_hot = false;
         for (hot_area, resize_to) in self.resize_areas.iter() {
-            if hot_area.contains(win_area.as_position()) {
+            if hot_area.contains(pos) {
                 hit_hot = true;
                 win_area = *resize_to;
+                break;
             }
         }
         if !hit_hot {
