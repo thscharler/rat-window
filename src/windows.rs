@@ -134,6 +134,9 @@ where
         self.manager_state
             .borrow_mut()
             .set_window_area(handle, area);
+        self.manager_state
+            .borrow_mut()
+            .set_base_size(handle, area.as_size());
     }
 
     pub fn is_window_focused(&self, handle: WinHandle) -> bool {
@@ -170,6 +173,9 @@ where
         self.manager_state
             .borrow_mut()
             .set_window_area(handle, area);
+        self.manager_state
+            .borrow_mut()
+            .set_base_size(handle, area.as_size());
         self.windows.borrow_mut().insert(handle, window);
 
         handle

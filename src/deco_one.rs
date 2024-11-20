@@ -39,7 +39,10 @@ pub struct DecoOneState {
     drag_action: DragAction,
     drag_handle: Option<WinHandle>,
     /// Offset mouse cursor to window origin.
-    drag_offset: Position,
+    drag_offset: (u16, u16),
+
+    /// resize areas. when inside a resize to b while moving.
+    resize_areas: Vec<(Rect, Rect)>,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -56,7 +59,9 @@ enum DragAction {
 
 #[derive(Debug)]
 struct DecoMeta {
-    area: Rect,
+    base_size: Size,
+
+    window_area: Rect,
     widget_area: Rect,
 
     close_area: Rect,
@@ -73,7 +78,8 @@ struct DecoMeta {
 impl Default for DecoMeta {
     fn default() -> Self {
         Self {
-            area: Default::default(),
+            base_size: Default::default(),
+            window_area: Default::default(),
             widget_area: Default::default(),
             close_area: Default::default(),
             move_area: Default::default(),
@@ -203,7 +209,7 @@ impl DecoOne {
         };
 
         // title
-        let area = meta.area;
+        let area = meta.window_area;
 
         // render border
         self.block.as_ref().render_ref(area, tmp);
@@ -266,6 +272,7 @@ impl DecoOneState {
 
     pub fn set_area(&mut self, area: Rect) {
         self.area = area;
+        self.calculate_hot();
     }
 
     pub fn insert(&mut self, handle: WinHandle) {
@@ -279,11 +286,19 @@ impl DecoOneState {
     }
 
     pub fn window_area(&self, handle: WinHandle) -> Rect {
-        self.meta.get(&handle).expect("window").area
+        self.meta.get(&handle).expect("window").window_area
     }
 
     pub fn set_window_area(&mut self, handle: WinHandle, area: Rect) {
-        self.meta.get_mut(&handle).expect("window").area = area;
+        self.meta.get_mut(&handle).expect("window").window_area = area;
+    }
+
+    pub fn base_size(&self, handle: WinHandle) -> Size {
+        self.meta.get(&handle).expect("window").base_size
+    }
+
+    pub fn set_base_size(&mut self, handle: WinHandle, size: Size) {
+        self.meta.get_mut(&handle).expect("window").base_size = size;
     }
 
     pub fn window_widget_area(&self, handle: WinHandle) -> Rect {
@@ -379,6 +394,112 @@ impl DecoOneState {
     }
 }
 
+impl DecoOneState {
+    fn calculate_hot(&mut self) {
+        self.resize_areas.clear();
+
+        let area = Rect::from((
+            self.screen_to_win(self.area.as_position())
+                .expect("valid_pos"),
+            self.area.as_size(),
+        ));
+
+        let w_clip = area.width * 2 / 5;
+        let h_clip = area.width * 2 / 5;
+
+        // snap-click to top
+        self.resize_areas.push((
+            Rect::new(area.x + w_clip, area.y, area.width - 2 * w_clip, 2),
+            Rect::new(area.x, area.y, area.width, area.height / 2),
+        ));
+        // snap-click to bottom
+        self.resize_areas.push((
+            Rect::new(
+                area.x + w_clip,
+                (area.y + area.height).saturating_sub(1),
+                area.width - 2 * w_clip,
+                2,
+            ),
+            Rect::new(
+                area.x,
+                area.y + area.height / 2,
+                area.width,
+                area.height - area.height / 2,
+            ),
+        ))
+    }
+
+    fn calculate_resize_left(&self, mut area: Rect, pos: Position) -> Rect {
+        let right = area.x + area.width;
+        area.x = pos.x;
+        if area.x < self.offset.x {
+            area.x = self.offset.x;
+        } else if area.x >= right.saturating_sub(2) {
+            area.x = right.saturating_sub(2);
+        }
+        area.width = right.saturating_sub(area.x);
+        area
+    }
+
+    fn calculate_resize_right(&self, mut area: Rect, pos: Position, max_x: u16) -> Rect {
+        area.width = pos.x.saturating_sub(area.x);
+        if area.width < 2 {
+            area.width = 2;
+        }
+        if area.x + area.width >= max_x {
+            area.width = max_x.saturating_sub(area.x) + 1;
+        }
+        area
+    }
+
+    fn calculate_resize_bottom(&self, mut area: Rect, pos: Position, max_y: u16) -> Rect {
+        area.height = pos.y.saturating_sub(area.y);
+        if area.height < 2 {
+            area.height = 2;
+        }
+        if area.y + area.height >= max_y {
+            area.height = max_y.saturating_sub(area.y) + 1;
+        }
+        area
+    }
+
+    fn calculate_move(
+        &self,
+        mut win_area: Rect,
+        base_size: Size,
+        pos: Position,
+        max: (u16, u16),
+    ) -> Rect {
+        win_area.x = pos.x.saturating_sub(self.drag_offset.0);
+        win_area.y = pos.y.saturating_sub(self.drag_offset.1);
+        win_area.width = base_size.width;
+        win_area.height = base_size.height;
+
+        let mut hit_hot = false;
+        for (hot_area, resize_to) in self.resize_areas.iter() {
+            if hot_area.contains(win_area.as_position()) {
+                hit_hot = true;
+                win_area = *resize_to;
+            }
+        }
+        if !hit_hot {
+            if win_area.y < self.offset.y {
+                win_area.y = self.offset.y;
+            } else if win_area.y >= max.1 {
+                win_area.y = max.1;
+            }
+            if win_area.x + win_area.width < self.offset.x {
+                win_area.x = self.offset.x.saturating_sub(win_area.width);
+            }
+            if win_area.x >= max.0 {
+                win_area.x = max.0;
+            }
+        }
+
+        win_area
+    }
+}
+
 // TODO: DecoOneOutcome
 
 impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
@@ -397,8 +518,12 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
                         if meta.move_area.contains(pos) {
                             self.drag_action = DragAction::Move;
                             self.drag_handle = Some(handle);
-                            self.drag_offset =
-                                Position::new(*x - meta.move_area.x, *y - meta.move_area.y);
+                            if meta.window_area.as_size() != meta.base_size {
+                                self.drag_offset = (0, 0).into();
+                            } else {
+                                self.drag_offset =
+                                    (*x - meta.move_area.x, *y - meta.move_area.y).into();
+                            }
                             Outcome::Changed
                         } else if meta.resize_right_area.contains(pos) {
                             self.drag_action = DragAction::ResizeRight;
@@ -433,9 +558,11 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
                 }
             }
             ct_event!(mouse up Left for x,y) => {
-                let pos = Position::new(*x, *y);
-                if let Some(handle) = self.window_at(pos) {
-                    self.window_to_front(handle).into()
+                if self.drag_handle.is_some() {
+                    self.drag_handle = None;
+                    self.drag_action = DragAction::default();
+                    self.drag_offset = Default::default();
+                    Outcome::Changed
                 } else {
                     Outcome::Continue
                 }
@@ -444,71 +571,46 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
                 if let Some(handle) = self.drag_handle {
                     let max_x = (self.offset.x + self.area.width).saturating_sub(1);
                     let max_y = (self.offset.y + self.area.height).saturating_sub(1);
+                    let base_size = self.base_size(handle);
 
                     let mut new = self.window_area(handle);
-
-                    if self.drag_action == DragAction::Move {
-                        let move_offset = self.drag_offset;
-                        new.x = x.saturating_sub(move_offset.x);
-                        new.y = y.saturating_sub(move_offset.y);
-
-                        if new.y < self.offset.y {
-                            new.y = self.offset.y;
-                        } else if new.y >= max_y {
-                            new.y = max_y;
+                    new = match self.drag_action {
+                        DragAction::None => new,
+                        DragAction::Move => self.calculate_move(
+                            new,
+                            base_size,
+                            Position::new(*x, *y),
+                            (max_x, max_y),
+                        ),
+                        DragAction::ResizeLeft => {
+                            self.calculate_resize_left(new, Position::new(*x, *y))
                         }
-                        if new.x + new.width < self.offset.x {
-                            new.x = self.offset.x.saturating_sub(new.width);
+                        DragAction::ResizeRight => {
+                            self.calculate_resize_right(new, Position::new(*x, *y), max_x)
                         }
-                        if new.x >= max_x {
-                            new.x = max_x;
+                        DragAction::ResizeBottomLeft => {
+                            new = self.calculate_resize_left(new, Position::new(*x, *y));
+                            self.calculate_resize_bottom(new, Position::new(*x, *y), max_y)
                         }
-                    }
-                    if self.drag_action == DragAction::ResizeLeft
-                        || self.drag_action == DragAction::ResizeBottomLeft
-                    {
-                        let right = new.x + new.width;
-                        new.x = *x;
-                        if new.x < self.offset.x {
-                            new.x = self.offset.x;
-                        } else if new.x >= right.saturating_sub(2) {
-                            new.x = right.saturating_sub(2);
+                        DragAction::ResizeBottom => {
+                            self.calculate_resize_bottom(new, Position::new(*x, *y), max_y)
                         }
-                        new.width = right.saturating_sub(new.x);
-                    }
-                    if self.drag_action == DragAction::ResizeRight
-                        || self.drag_action == DragAction::ResizeBottomRight
-                    {
-                        new.width = x.saturating_sub(new.x);
-                        if new.width < 2 {
-                            new.width = 2;
+                        DragAction::ResizeBottomRight => {
+                            new = self.calculate_resize_right(new, Position::new(*x, *y), max_x);
+                            self.calculate_resize_bottom(new, Position::new(*x, *y), max_y)
                         }
-                        if new.x + new.width >= max_x {
-                            new.width = max_x.saturating_sub(new.x) + 1;
-                        }
-                    }
-                    if self.drag_action == DragAction::ResizeBottom
-                        || self.drag_action == DragAction::ResizeBottomLeft
-                        || self.drag_action == DragAction::ResizeBottomRight
-                    {
-                        new.height = y.saturating_sub(new.y);
-                        if new.height < 2 {
-                            new.height = 2;
-                        }
-                        if new.y + new.height >= max_y {
-                            new.height = max_y.saturating_sub(new.y) + 1;
-                        }
-                    }
+                    };
                     self.set_window_area(handle, new);
                     Outcome::Changed
                 } else {
                     Outcome::Continue
                 }
             }
-            ct_event!(mouse up Left for _x,_y) | ct_event!(mouse moved for _x,_y) => {
+            ct_event!(mouse moved for _x,_y) => {
+                // reset on fail otherwise
                 self.drag_handle = None;
-                self.drag_action = DragAction::None;
-                self.drag_offset = Position::default();
+                self.drag_action = DragAction::default();
+                self.drag_offset = Default::default();
                 Outcome::Continue
             }
 
