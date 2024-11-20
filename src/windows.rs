@@ -3,7 +3,7 @@ use crate::WinState;
 use crossterm::event::MouseEvent;
 use rat_focus::ContainerFlag;
 use ratatui::buffer::Buffer;
-use ratatui::layout::{Position, Rect};
+use ratatui::layout::{Position, Rect, Size};
 use ratatui::prelude::StatefulWidget;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -40,9 +40,6 @@ where
 {
     /// Area used by the widget.
     pub area: Rect,
-
-    /// Is the complete [Windows] widget focused itself?
-    pub focus: ContainerFlag,
 
     /// Window manager.
     pub manager_state: RefCell<DecoOneState>,
@@ -82,6 +79,7 @@ where
 
         state.area = area;
         manager_state.set_offset(self.offset);
+        manager_state.set_area(area);
 
         for handle in manager_state.windows() {
             let window_state = windows.get_mut(&handle).expect("window");
@@ -119,7 +117,6 @@ where
         Self {
             area: Default::default(),
             manager_state: RefCell::new(DecoOneState::default()),
-            focus: Default::default(),
             max_handle: Default::default(),
             windows: Default::default(),
             closed_windows: Default::default(),
@@ -156,6 +153,7 @@ where
         self.manager_state.borrow().windows()
     }
 
+    /// Window at the given __screen__ coordinates.
     pub fn window_at(&self, position: Position) -> Option<WinHandle> {
         self.manager_state.borrow().window_at(position)
     }
@@ -211,12 +209,14 @@ where
     /// Convert the mouse-event to window coordinates, if possible.
     ///
     pub fn relocate_mouse_event(&self, m: &MouseEvent) -> Option<MouseEvent> {
-        let offset = self.offset();
-
-        if m.column + offset.x >= self.area.x && m.row + offset.y >= self.area.y {
+        if let Some(pos) = self
+            .manager_state
+            .borrow()
+            .screen_to_win(Position::new(m.column, m.row))
+        {
             let mut mm = m.clone();
-            mm.column = (mm.column + offset.x).saturating_sub(self.area.x);
-            mm.row = (mm.row + offset.y).saturating_sub(self.area.y);
+            mm.column = pos.x;
+            mm.row = pos.y;
             Some(mm)
         } else {
             None

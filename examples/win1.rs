@@ -6,7 +6,7 @@ use log::debug;
 use rat_event::{ct_event, ConsumedEvent, HandleEvent, Outcome, Regular};
 use rat_focus::{FocusBuilder, FocusContainer};
 use rat_window::{DecoOne, WinCtState, Windows, WindowsState};
-use ratatui::layout::{Alignment, Constraint, Layout, Rect};
+use ratatui::layout::{Alignment, Constraint, Layout, Position, Rect};
 use ratatui::widgets::{Block, BorderType, StatefulWidget};
 use ratatui::Frame;
 use std::cmp::max;

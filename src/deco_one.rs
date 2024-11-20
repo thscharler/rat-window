@@ -4,7 +4,7 @@ use crate::windows::WinHandle;
 use rat_event::{ct_event, HandleEvent, Outcome, Regular};
 use rat_focus::HasFocus;
 use ratatui::buffer::Buffer;
-use ratatui::layout::{Alignment, Position, Rect};
+use ratatui::layout::{Alignment, Position, Rect, Size};
 use ratatui::prelude::{BlockExt, Style};
 use ratatui::text::{Span, Text};
 use ratatui::widgets::{Block, Widget, WidgetRef};
@@ -26,16 +26,31 @@ pub struct DecoOneState {
 
     /// Render offset.
     offset: Position,
+    /// View area in screen coordinates.
+    area: Rect,
 
     /// Window metadata.
     meta: HashMap<WinHandle, DecoMeta>,
     /// Rendering order. Back to front.
     order: Vec<WinHandle>,
 
-    /// Currently moving window
-    move_handle: Option<WinHandle>,
+    /// Currently dragged window
+    drag_action: DragAction,
+    drag_handle: Option<WinHandle>,
     /// Offset mouse cursor to window origin.
-    move_offset: Position,
+    drag_offset: Position,
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+enum DragAction {
+    #[default]
+    None,
+    Move,
+    ResizeLeft,
+    ResizeRight,
+    ResizeBottomLeft,
+    ResizeBottom,
+    ResizeBottomRight,
 }
 
 #[derive(Debug)]
@@ -207,7 +222,7 @@ impl DecoOne {
             if meta.flags.closeable {
                 meta.close_area.x - (area.x + 1)
             } else {
-                area.width - 2
+                area.width.saturating_sub(2)
             },
             1,
         );
@@ -242,6 +257,14 @@ impl DecoOneState {
 
     pub fn set_offset(&mut self, offset: Position) {
         self.offset = offset;
+    }
+
+    pub fn area(&self) -> Rect {
+        self.area
+    }
+
+    pub fn set_area(&mut self, area: Rect) {
+        self.area = area;
     }
 
     pub fn insert(&mut self, handle: WinHandle) {
@@ -305,6 +328,15 @@ impl DecoOneState {
         self.order.clone()
     }
 
+    pub fn window_to_front(&mut self, handle: WinHandle) -> bool {
+        self.order.retain(|v| *v != handle);
+        self.order.push(handle);
+        true
+    }
+}
+
+impl DecoOneState {
+    /// Window at the given __screen__ position.
     pub fn window_at(&self, position: Position) -> Option<WinHandle> {
         for handle in self.order.iter().rev().copied() {
             let area = self.window_area(handle);
@@ -315,10 +347,28 @@ impl DecoOneState {
         None
     }
 
-    pub fn window_to_front(&mut self, handle: WinHandle) -> bool {
-        self.order.retain(|v| *v != handle);
-        self.order.push(handle);
-        true
+    /// Translate screen coordinates to window coordinates.
+    pub fn screen_to_win(&self, pos: Position) -> Option<Position> {
+        if pos.x + self.offset.x >= self.area.x && pos.y + self.offset.y >= self.area.y {
+            Some(Position::new(
+                (pos.x + self.offset.x).saturating_sub(self.area.x),
+                (pos.y + self.offset.y).saturating_sub(self.area.y),
+            ))
+        } else {
+            None
+        }
+    }
+
+    /// Translate window coordinates to screen coordinates
+    pub fn win_to_screen(&self, pos: Position) -> Option<Position> {
+        if pos.x + self.area.x >= self.offset.x && pos.y + self.area.y >= self.offset.y {
+            Some(Position::new(
+                (pos.x + self.area.x).saturating_sub(self.offset.x),
+                (pos.y + self.area.y).saturating_sub(self.offset.y),
+            ))
+        } else {
+            None
+        }
     }
 }
 
@@ -328,12 +378,34 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
     fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> Outcome {
         match event {
             ct_event!(mouse down Left for x,y) => {
-                if let Some(handle) = self.window_at(Position::new(*x, *y)) {
+                let pos = Position::new(*x, *y);
+                if let Some(handle) = self.window_at(pos) {
                     if let Some(meta) = self.meta.get(&handle) {
-                        if meta.move_area.contains(Position::new(*x, *y)) {
-                            self.move_handle = Some(handle);
-                            self.move_offset =
+                        if meta.move_area.contains(pos) {
+                            self.drag_action = DragAction::Move;
+                            self.drag_handle = Some(handle);
+                            self.drag_offset =
                                 Position::new(*x - meta.move_area.x, *y - meta.move_area.y);
+                            Outcome::Changed
+                        } else if meta.resize_right_area.contains(pos) {
+                            self.drag_action = DragAction::ResizeRight;
+                            self.drag_handle = Some(handle);
+                            Outcome::Changed
+                        } else if meta.resize_bottom_right_area.contains(pos) {
+                            self.drag_action = DragAction::ResizeBottomRight;
+                            self.drag_handle = Some(handle);
+                            Outcome::Changed
+                        } else if meta.resize_bottom_area.contains(pos) {
+                            self.drag_action = DragAction::ResizeBottom;
+                            self.drag_handle = Some(handle);
+                            Outcome::Changed
+                        } else if meta.resize_bottom_left_area.contains(pos) {
+                            self.drag_action = DragAction::ResizeBottomLeft;
+                            self.drag_handle = Some(handle);
+                            Outcome::Changed
+                        } else if meta.resize_left_area.contains(pos) {
+                            self.drag_action = DragAction::ResizeLeft;
+                            self.drag_handle = Some(handle);
                             Outcome::Changed
                         } else {
                             Outcome::Continue
@@ -346,22 +418,74 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
                 }
             }
             ct_event!(mouse drag Left for x,y) => {
-                if let Some(handle) = self.move_handle {
-                    let mut area = self.window_area(handle);
+                if let Some(handle) = self.drag_handle {
+                    let max_x = (self.offset.x + self.area.width).saturating_sub(1);
+                    let max_y = (self.offset.y + self.area.height).saturating_sub(1);
 
-                    let move_offset = self.move_offset;
-                    area.x = x.saturating_sub(move_offset.x);
-                    area.y = y.saturating_sub(move_offset.y);
+                    let mut new = self.window_area(handle);
 
-                    self.set_window_area(handle, area);
+                    if self.drag_action == DragAction::Move {
+                        let move_offset = self.drag_offset;
+                        new.x = x.saturating_sub(move_offset.x);
+                        new.y = y.saturating_sub(move_offset.y);
+
+                        if new.y < self.offset.y {
+                            new.y = self.offset.y;
+                        } else if new.y >= max_y {
+                            new.y = max_y;
+                        }
+                        if new.x + new.width < self.offset.x {
+                            new.x = self.offset.x.saturating_sub(new.width);
+                        }
+                        if new.x >= max_x {
+                            new.x = max_x;
+                        }
+                    }
+                    if self.drag_action == DragAction::ResizeLeft
+                        || self.drag_action == DragAction::ResizeBottomLeft
+                    {
+                        let right = new.x + new.width;
+                        new.x = *x;
+                        if new.x < self.offset.x {
+                            new.x = self.offset.x;
+                        } else if new.x >= right.saturating_sub(2) {
+                            new.x = right.saturating_sub(2);
+                        }
+                        new.width = right.saturating_sub(new.x);
+                    }
+                    if self.drag_action == DragAction::ResizeRight
+                        || self.drag_action == DragAction::ResizeBottomRight
+                    {
+                        new.width = x.saturating_sub(new.x);
+                        if new.width < 2 {
+                            new.width = 2;
+                        }
+                        if new.x + new.width >= max_x {
+                            new.width = max_x.saturating_sub(new.x) + 1;
+                        }
+                    }
+                    if self.drag_action == DragAction::ResizeBottom
+                        || self.drag_action == DragAction::ResizeBottomLeft
+                        || self.drag_action == DragAction::ResizeBottomRight
+                    {
+                        new.height = y.saturating_sub(new.y);
+                        if new.height < 2 {
+                            new.height = 2;
+                        }
+                        if new.y + new.height >= max_y {
+                            new.height = max_y.saturating_sub(new.y) + 1;
+                        }
+                    }
+                    self.set_window_area(handle, new);
                     Outcome::Changed
                 } else {
                     Outcome::Continue
                 }
             }
             ct_event!(mouse up Left for _x,_y) | ct_event!(mouse moved for _x,_y) => {
-                self.move_handle = None;
-                self.move_offset = Position::default();
+                self.drag_handle = None;
+                self.drag_action = DragAction::None;
+                self.drag_offset = Position::default();
                 Outcome::Continue
             }
 
