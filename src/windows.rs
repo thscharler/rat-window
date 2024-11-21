@@ -1,6 +1,7 @@
 use crate::deco_one::{DecoOne, DecoOneState};
 use crate::WinState;
 use crossterm::event::MouseEvent;
+use rat_focus::{FocusFlag, HasFocus, Navigation, ZRect};
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
 use ratatui::prelude::StatefulWidget;
@@ -37,9 +38,6 @@ pub struct WindowsState<T>
 where
     T: WinState + ?Sized + 'static,
 {
-    /// Area used by the widget.
-    pub area: Rect,
-
     /// Window manager.
     pub manager_state: RefCell<DecoOneState>,
 
@@ -84,7 +82,6 @@ where
         let mut manager_state = state.manager_state.borrow_mut();
         let mut windows = state.windows.borrow_mut();
 
-        state.area = area;
         manager_state.set_offset(self.offset);
         manager_state.set_area(area);
 
@@ -116,6 +113,20 @@ where
     }
 }
 
+impl<T> HasFocus for WindowsState<T> {
+    fn focus(&self) -> FocusFlag {
+        self.manager_state.borrow().focus()
+    }
+
+    fn area(&self) -> Rect {
+        self.manager_state.borrow_mut().area()
+    }
+
+    fn navigable(&self) -> Navigation {
+        Navigation::None
+    }
+}
+
 impl<T> WindowsState<T>
 where
     T: WinState + ?Sized + 'static,
@@ -123,7 +134,6 @@ where
     /// New state.
     pub fn new() -> Self {
         Self {
-            area: Default::default(),
             manager_state: RefCell::new(DecoOneState::default()),
             max_handle: Default::default(),
             windows: Default::default(),

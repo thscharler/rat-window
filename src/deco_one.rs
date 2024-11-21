@@ -3,7 +3,7 @@ use crate::win_flags::WinFlags;
 use crate::windows::WinHandle;
 use rat_event::util::MouseFlags;
 use rat_event::{ct_event, HandleEvent, Outcome, Regular};
-use rat_focus::HasFocus;
+use rat_focus::{FocusFlag, HasFocus};
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Position, Rect, Size};
 use ratatui::prelude::{BlockExt, Style};
@@ -30,12 +30,10 @@ pub struct DecoOne {
 #[derive(Debug, Default)]
 pub struct DecoOneState {
     /// View area in screen coordinates.
-    area_screen: Rect,
+    area: Rect,
     /// View area in windows coordinates.
     area_win: Rect,
 
-    /// Temporary buffer for rendering.
-    tmp: Buffer,
     /// Render offset. All coordinates are shifted by this
     /// value before rendering.
     offset: Position,
@@ -50,12 +48,29 @@ pub struct DecoOneState {
     /// snap to tile areas. when inside a resize to b during move.
     snap_areas: Vec<(Vec<Rect>, Rect)>,
 
+    /// Keyboard mode
+    mode: KeyboardMode,
+    /// Windows has the focus?
+    focus: FocusFlag,
     /// mouse flags
     mouse: MouseFlags,
+
+    /// Temporary buffer for rendering.
+    tmp: Buffer,
+}
+
+/// Current keyboard mode.
+#[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
+enum KeyboardMode {
+    /// Regular behaviour
+    #[default]
+    Regular,
+    /// Do work on the windows themselves.
+    Meta,
 }
 
 /// Current drag action.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum DragAction {
     Move,
     ResizeLeft,
@@ -66,7 +81,7 @@ enum DragAction {
 }
 
 /// Current drag data.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Drag {
     // drag what?
     action: DragAction,
@@ -332,10 +347,15 @@ impl DecoOneState {
         self.offset = offset;
     }
 
+    /// Get the focus flag for [Windows]
+    pub fn focus(&self) -> FocusFlag {
+        self.focus.clone()
+    }
+
     /// Current windows area.
     /// In __screen__ coordinates.
     pub fn area(&self) -> Rect {
-        self.area_screen
+        self.area
     }
 
     /// Change the windows area.
@@ -343,7 +363,7 @@ impl DecoOneState {
     /// Recalculates snap areas and snapped window sizes.
     /// Does nothing for regularly placed windows.
     pub fn set_area(&mut self, area: Rect) {
-        self.area_screen = area;
+        self.area = area;
         self.area_win = Rect::from((
             self.screen_to_win(area.as_position()).expect("area"),
             area.as_size(),
@@ -458,12 +478,10 @@ impl DecoOneState {
 
     /// Translate screen coordinates to window coordinates.
     pub fn screen_to_win(&self, pos: Position) -> Option<Position> {
-        if pos.x + self.offset.x >= self.area_screen.x
-            && pos.y + self.offset.y >= self.area_screen.y
-        {
+        if pos.x + self.offset.x >= self.area.x && pos.y + self.offset.y >= self.area.y {
             Some(Position::new(
-                (pos.x + self.offset.x).saturating_sub(self.area_screen.x),
-                (pos.y + self.offset.y).saturating_sub(self.area_screen.y),
+                (pos.x + self.offset.x).saturating_sub(self.area.x),
+                (pos.y + self.offset.y).saturating_sub(self.area.y),
             ))
         } else {
             None
@@ -472,12 +490,10 @@ impl DecoOneState {
 
     /// Translate window coordinates to screen coordinates
     pub fn win_to_screen(&self, pos: Position) -> Option<Position> {
-        if pos.x + self.area_screen.x >= self.offset.x
-            && pos.y + self.area_screen.y >= self.offset.y
-        {
+        if pos.x + self.area.x >= self.offset.x && pos.y + self.area.y >= self.offset.y {
             Some(Position::new(
-                (pos.x + self.area_screen.x).saturating_sub(self.offset.x),
-                (pos.y + self.area_screen.y).saturating_sub(self.offset.y),
+                (pos.x + self.area.x).saturating_sub(self.offset.x),
+                (pos.y + self.area.y).saturating_sub(self.offset.y),
             ))
         } else {
             None
