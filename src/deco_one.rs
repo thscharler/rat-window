@@ -2,6 +2,7 @@ use crate::util::{copy_buffer, revert_style};
 use crate::win_flags::WinFlags;
 use crate::windows::WinHandle;
 use log::debug;
+use rat_event::util::MouseFlags;
 use rat_event::{ct_event, HandleEvent, Outcome, Regular};
 use rat_focus::HasFocus;
 use ratatui::buffer::Buffer;
@@ -36,14 +37,17 @@ pub struct DecoOneState {
     /// Rendering order. Back to front.
     order: Vec<WinHandle>,
 
-    /// Currently dragged window
+    /// Currently dragged mode and window
     drag_action: DragAction,
     drag_handle: Option<WinHandle>,
     /// Offset mouse cursor to window origin.
     drag_offset: (u16, u16),
 
-    /// resize areas. when inside a resize to b while moving.
+    /// resize areas. when inside a resize to b during move.
     resize_areas: Vec<(Rect, Rect)>,
+
+    /// mouse flags
+    mouse: MouseFlags,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -60,8 +64,7 @@ enum DragAction {
 
 #[derive(Debug)]
 struct DecoMeta {
-    base_size: Size,
-
+    base_size: Rect,
     window_area: Rect,
     widget_area: Rect,
 
@@ -294,11 +297,11 @@ impl DecoOneState {
         self.meta.get_mut(&handle).expect("window").window_area = area;
     }
 
-    pub fn base_size(&self, handle: WinHandle) -> Size {
+    pub fn base_size(&self, handle: WinHandle) -> Rect {
         self.meta.get(&handle).expect("window").base_size
     }
 
-    pub fn set_base_size(&mut self, handle: WinHandle, size: Size) {
+    pub fn set_base_size(&mut self, handle: WinHandle, size: Rect) {
         self.meta.get_mut(&handle).expect("window").base_size = size;
     }
 
@@ -638,11 +641,36 @@ impl DecoOneState {
     }
 }
 
-// TODO: DecoOneOutcome
-
 impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
     fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> Outcome {
         match event {
+            ct_event!(mouse any for m) if self.mouse.doubleclick(self.area, m) => {
+                let pos = Position::new(m.column, m.row);
+
+                if let Some(handle) = self.window_at(pos) {
+                    if let Some(meta) = self.meta.get(&handle) {
+                        if meta.move_area.contains(pos) {
+                            let area = Rect::from((
+                                self.screen_to_win(self.area.as_position()).expect("area"),
+                                self.area.as_size(),
+                            ));
+                            let win_area = self.window_area(handle);
+                            if area == win_area {
+                                self.set_window_area(handle, self.base_size(handle));
+                            } else {
+                                self.set_window_area(handle, area);
+                            }
+                            Outcome::Changed
+                        } else {
+                            Outcome::Continue
+                        }
+                    } else {
+                        Outcome::Continue
+                    }
+                } else {
+                    Outcome::Continue
+                }
+            }
             ct_event!(mouse down Left for x,y) => {
                 let pos = Position::new(*x, *y);
                 if let Some(handle) = self.window_at(pos) {
@@ -656,7 +684,7 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
                         if meta.move_area.contains(pos) {
                             self.drag_action = DragAction::Move;
                             self.drag_handle = Some(handle);
-                            if meta.window_area.as_size() != meta.base_size {
+                            if meta.window_area.as_size() != meta.base_size.as_size() {
                                 self.drag_offset = (0, 0).into();
                             } else {
                                 self.drag_offset =
@@ -716,7 +744,7 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
                         DragAction::None => new,
                         DragAction::Move => self.calculate_move(
                             new,
-                            base_size,
+                            base_size.as_size(),
                             Position::new(*x, *y),
                             (max_x, max_y),
                         ),
