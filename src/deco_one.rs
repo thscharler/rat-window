@@ -25,7 +25,9 @@ pub struct DecoOne {
 #[derive(Debug, Default)]
 pub struct DecoOneState {
     /// View area in screen coordinates.
-    area: Rect,
+    area_screen: Rect,
+    /// View area in windows coordinates.
+    area_win: Rect,
 
     /// Temporary buffer for rendering.
     tmp: Buffer,
@@ -312,13 +314,22 @@ impl DecoOneState {
     /// Current windows area.
     /// In __screen__ coordinates.
     pub fn area(&self) -> Rect {
-        self.area
+        self.area_screen
     }
 
-    // todo: xxx
+    /// Change the windows area.
+    ///
+    /// Recalculates snap areas and snapped window sizes.
+    /// Does nothing for regularly placed windows.
     pub fn set_area(&mut self, area: Rect) {
-        self.area = area;
+        self.area_screen = area;
+        self.area_win = Rect::from((
+            self.screen_to_win(area.as_position()).expect("area"),
+            area.as_size(),
+        ));
+
         self.calculate_snaps();
+        self.update_snapped_windows();
     }
 
     /// Add a new window
@@ -426,10 +437,12 @@ impl DecoOneState {
 
     /// Translate screen coordinates to window coordinates.
     pub fn screen_to_win(&self, pos: Position) -> Option<Position> {
-        if pos.x + self.offset.x >= self.area.x && pos.y + self.offset.y >= self.area.y {
+        if pos.x + self.offset.x >= self.area_screen.x
+            && pos.y + self.offset.y >= self.area_screen.y
+        {
             Some(Position::new(
-                (pos.x + self.offset.x).saturating_sub(self.area.x),
-                (pos.y + self.offset.y).saturating_sub(self.area.y),
+                (pos.x + self.offset.x).saturating_sub(self.area_screen.x),
+                (pos.y + self.offset.y).saturating_sub(self.area_screen.y),
             ))
         } else {
             None
@@ -438,10 +451,12 @@ impl DecoOneState {
 
     /// Translate window coordinates to screen coordinates
     pub fn win_to_screen(&self, pos: Position) -> Option<Position> {
-        if pos.x + self.area.x >= self.offset.x && pos.y + self.area.y >= self.offset.y {
+        if pos.x + self.area_screen.x >= self.offset.x
+            && pos.y + self.area_screen.y >= self.offset.y
+        {
             Some(Position::new(
-                (pos.x + self.area.x).saturating_sub(self.offset.x),
-                (pos.y + self.area.y).saturating_sub(self.offset.y),
+                (pos.x + self.area_screen.x).saturating_sub(self.offset.x),
+                (pos.y + self.area_screen.y).saturating_sub(self.offset.y),
             ))
         } else {
             None
@@ -454,126 +469,132 @@ impl DecoOneState {
     fn calculate_snaps(&mut self) {
         self.snap_areas.clear();
 
-        let area = Rect::from((
-            self.screen_to_win(self.area.as_position())
-                .expect("valid_pos"),
-            self.area.as_size(),
-        ));
+        let area_win = self.area_win;
 
-        let w_clip = area.width / 5;
-        let h_clip = area.height / 5;
+        let w_clip = area_win.width / 5;
+        let h_clip = area_win.height / 5;
 
         // 0: left
         self.snap_areas.push((
             vec![Rect::new(
-                area.x,
-                area.y + h_clip,
+                area_win.x,
+                area_win.y + h_clip,
                 1,
-                area.height - 2 * h_clip,
+                area_win.height - 2 * h_clip,
             )],
-            Rect::new(area.x, area.y, area.width / 2, area.height),
+            Rect::new(area_win.x, area_win.y, area_win.width / 2, area_win.height),
         ));
 
         // 1: alt left
         self.snap_areas.push((
             vec![Rect::new(
-                area.x + 1,
-                area.y + h_clip,
+                area_win.x + 1,
+                area_win.y + h_clip,
                 1,
-                area.height - 2 * h_clip,
+                area_win.height - 2 * h_clip,
             )],
-            Rect::new(area.x, area.y, area.width * 6 / 10, area.height),
+            Rect::new(
+                area_win.x,
+                area_win.y,
+                area_win.width * 6 / 10,
+                area_win.height,
+            ),
         ));
 
         // 2: right
         self.snap_areas.push((
             vec![Rect::new(
-                (area.x + area.width).saturating_sub(1),
-                area.y + h_clip,
+                (area_win.x + area_win.width).saturating_sub(1),
+                area_win.y + h_clip,
                 1,
-                area.height - 2 * h_clip,
+                area_win.height - 2 * h_clip,
             )],
             Rect::new(
-                area.x + area.width / 2,
-                area.y,
-                area.width - area.width / 2,
-                area.height,
+                area_win.x + area_win.width / 2,
+                area_win.y,
+                area_win.width - area_win.width / 2,
+                area_win.height,
             ),
         ));
 
         // 3: alt right
         self.snap_areas.push((
             vec![Rect::new(
-                (area.x + area.width).saturating_sub(2),
-                area.y + h_clip,
+                (area_win.x + area_win.width).saturating_sub(2),
+                area_win.y + h_clip,
                 1,
-                area.height - 2 * h_clip,
+                area_win.height - 2 * h_clip,
             )],
             Rect::new(
-                area.x + area.width * 4 / 10,
-                area.y,
-                area.width - area.width * 4 / 10,
-                area.height,
+                area_win.x + area_win.width * 4 / 10,
+                area_win.y,
+                area_win.width - area_win.width * 4 / 10,
+                area_win.height,
             ),
         ));
 
         // 4: snap-click to top
         self.snap_areas.push((
             vec![Rect::new(
-                area.x + w_clip,
-                area.y,
-                area.width - 2 * w_clip,
+                area_win.x + w_clip,
+                area_win.y,
+                area_win.width - 2 * w_clip,
                 1,
             )],
-            Rect::new(area.x, area.y, area.width, area.height / 2),
+            Rect::new(area_win.x, area_win.y, area_win.width, area_win.height / 2),
         ));
 
         // 5: snap-click to bottom
         self.snap_areas.push((
             vec![Rect::new(
-                area.x + w_clip,
-                (area.y + area.height).saturating_sub(1),
-                area.width - 2 * w_clip,
+                area_win.x + w_clip,
+                (area_win.y + area_win.height).saturating_sub(1),
+                area_win.width - 2 * w_clip,
                 1,
             )],
             Rect::new(
-                area.x,
-                area.y + area.height / 2,
-                area.width,
-                area.height - area.height / 2,
+                area_win.x,
+                area_win.y + area_win.height / 2,
+                area_win.width,
+                area_win.height - area_win.height / 2,
             ),
         ));
 
         // 6: top left
         self.snap_areas.push((
             vec![
-                Rect::new(area.x, area.y, w_clip, 1),
-                Rect::new(area.x, area.y, 1, h_clip),
+                Rect::new(area_win.x, area_win.y, w_clip, 1),
+                Rect::new(area_win.x, area_win.y, 1, h_clip),
             ],
-            Rect::new(area.x, area.y, area.width / 2, area.height / 2),
+            Rect::new(
+                area_win.x,
+                area_win.y,
+                area_win.width / 2,
+                area_win.height / 2,
+            ),
         ));
 
         // 7: top right
         self.snap_areas.push((
             vec![
                 Rect::new(
-                    (area.x + area.width - w_clip).saturating_sub(1),
-                    area.y,
+                    (area_win.x + area_win.width - w_clip).saturating_sub(1),
+                    area_win.y,
                     w_clip,
                     1,
                 ),
                 Rect::new(
-                    (area.x + area.width).saturating_sub(1), //
-                    area.y,
+                    (area_win.x + area_win.width).saturating_sub(1), //
+                    area_win.y,
                     1,
                     h_clip,
                 ),
             ],
             Rect::new(
-                area.x + area.width / 2,
-                area.y,
-                area.width - area.width / 2,
-                area.height / 2,
+                area_win.x + area_win.width / 2,
+                area_win.y,
+                area_win.width - area_win.width / 2,
+                area_win.height / 2,
             ),
         ));
 
@@ -581,23 +602,23 @@ impl DecoOneState {
         self.snap_areas.push((
             vec![
                 Rect::new(
-                    area.x, //
-                    (area.y + area.height).saturating_sub(1),
+                    area_win.x, //
+                    (area_win.y + area_win.height).saturating_sub(1),
                     w_clip,
                     1,
                 ),
                 Rect::new(
-                    area.x,
-                    (area.y + area.height - h_clip).saturating_sub(1),
+                    area_win.x,
+                    (area_win.y + area_win.height - h_clip).saturating_sub(1),
                     1,
                     h_clip,
                 ),
             ],
             Rect::new(
-                area.x,
-                area.y + area.height / 2,
-                area.width / 2,
-                area.height - area.height / 2,
+                area_win.x,
+                area_win.y + area_win.height / 2,
+                area_win.width / 2,
+                area_win.height - area_win.height / 2,
             ),
         ));
 
@@ -605,34 +626,28 @@ impl DecoOneState {
         self.snap_areas.push((
             vec![
                 Rect::new(
-                    (area.x + area.width - w_clip).saturating_sub(1),
-                    (area.y + area.height).saturating_sub(1),
+                    (area_win.x + area_win.width - w_clip).saturating_sub(1),
+                    (area_win.y + area_win.height).saturating_sub(1),
                     w_clip,
                     1,
                 ),
                 Rect::new(
-                    (area.x + area.width).saturating_sub(1),
-                    (area.y + area.height - h_clip).saturating_sub(1),
+                    (area_win.x + area_win.width).saturating_sub(1),
+                    (area_win.y + area_win.height - h_clip).saturating_sub(1),
                     1,
                     h_clip,
                 ),
             ],
             Rect::new(
-                area.x + area.width / 2,
-                area.y + area.height / 2,
-                area.width - area.width / 2,
-                area.height - area.height / 2,
+                area_win.x + area_win.width / 2,
+                area_win.y + area_win.height / 2,
+                area_win.width - area_win.width / 2,
+                area_win.height - area_win.height / 2,
             ),
         ));
 
         // 10: full area
-        self.snap_areas.push((
-            Vec::default(),
-            Rect::from((
-                self.screen_to_win(self.area.as_position()).expect("area"),
-                self.area.as_size(),
-            )),
-        ));
+        self.snap_areas.push((Vec::default(), self.area_win));
     }
 
     fn calculate_resize_left(&self, mut area: Rect, pos: Position) -> Rect {
@@ -709,6 +724,14 @@ impl DecoOneState {
 }
 
 impl DecoOneState {
+    fn update_snapped_windows(&mut self) {
+        for meta in self.meta.values_mut() {
+            if let Some(idx) = meta.snapped_to {
+                meta.window_area = self.snap_areas[idx].1;
+            }
+        }
+    }
+
     /// Start dragging.
     fn initiate_drag(&mut self, handle: WinHandle, pos: Position) -> bool {
         if let Some(meta) = self.meta.get(&handle) {
@@ -772,8 +795,8 @@ impl DecoOneState {
             panic!("drag not active")
         };
 
-        let max_x = (self.offset.x + self.area.width).saturating_sub(1);
-        let max_y = (self.offset.y + self.area.height).saturating_sub(1);
+        let max_x = (self.offset.x + self.area_win.width).saturating_sub(1);
+        let max_y = (self.offset.y + self.area_win.height).saturating_sub(1);
         let base_area = self.base_area(drag.handle);
         let win_area = self.window_area(drag.handle);
 
@@ -865,7 +888,7 @@ impl DecoOneState {
 impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
     fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> Outcome {
         match event {
-            ct_event!(mouse any for m) if self.mouse.doubleclick(self.area, m) => {
+            ct_event!(mouse any for m) if self.mouse.doubleclick(self.area_win, m) => {
                 let pos = Position::new(m.column, m.row);
                 if let Some(handle) = self.window_at(pos) {
                     self.flip_maximize(handle, pos).into()

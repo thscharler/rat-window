@@ -71,7 +71,7 @@ fn repaint_windows(
             .title_alignment(Alignment::Center)
             .focus_style(THEME.focus()),
     )
-    // .offset(Position::new(3, 3))
+    .offset(Position::new(10, 10))
     .render(hlayout[1], frame.buffer_mut(), &mut state.win);
 
     Ok(())
@@ -86,7 +86,7 @@ fn handle_windows(
     let mut b = FocusBuilder::new(None).enable_log();
     b.container(state);
     let mut focus = b.build();
-    focus.enable_log();
+    // focus.enable_log();
     let f = focus.handle(event, Regular);
 
     let r = match event {
@@ -127,12 +127,10 @@ impl FocusContainer for State {
 pub mod min_win {
     use crate::mini_salsa::theme::THEME;
     use crossterm::event::Event;
-    use log::debug;
     use rat_event::{ct_event, HandleEvent, Outcome, Regular};
     use rat_window::{WinCtState, WinFlags, WinHandle, WinState, WinWidget};
     use ratatui::buffer::Buffer;
     use ratatui::layout::{Position, Rect};
-    use ratatui::widgets::StatefulWidgetRef;
     use std::cell::RefCell;
     use std::rc::Rc;
 
@@ -199,11 +197,7 @@ pub mod min_win {
     impl HandleEvent<Event, Regular, Outcome> for MinWinState {
         fn handle(&mut self, event: &Event, _qualifier: Regular) -> Outcome {
             match event {
-                ct_event!(mouse down Left for _x,_y) => {
-                    debug!("winwin");
-                    // win.window_to_front(win.current());
-                    Outcome::Changed
-                }
+                ct_event!(mouse down Left for _x,_y) => Outcome::Changed,
                 _ => Outcome::Continue,
             }
         }
