@@ -1,7 +1,6 @@
 use crate::util::{copy_buffer, revert_style};
 use crate::win_flags::WinFlags;
 use crate::windows::WinHandle;
-use log::debug;
 use rat_event::util::MouseFlags;
 use rat_event::{ct_event, HandleEvent, Outcome, Regular};
 use rat_focus::HasFocus;
@@ -14,6 +13,9 @@ use std::cmp::max;
 use std::collections::HashMap;
 use std::mem;
 
+///
+/// Deco-One window manager.
+///
 #[derive(Debug, Default)]
 pub struct DecoOne {
     block: Option<Block<'static>>,
@@ -22,6 +24,9 @@ pub struct DecoOne {
     focus_style: Option<Style>,
 }
 
+///
+/// State for Deco-One.
+///
 #[derive(Debug, Default)]
 pub struct DecoOneState {
     /// View area in screen coordinates.
@@ -49,6 +54,7 @@ pub struct DecoOneState {
     mouse: MouseFlags,
 }
 
+/// Current drag action.
 #[derive(Debug, PartialEq, Eq)]
 enum DragAction {
     Move,
@@ -59,6 +65,7 @@ enum DragAction {
     ResizeBottomRight,
 }
 
+/// Current drag data.
 #[derive(Debug)]
 struct Drag {
     // drag what?
@@ -98,6 +105,7 @@ struct DecoMeta {
 }
 
 impl Drag {
+    /// Drag data for a move.
     fn new_move(handle: WinHandle, snap: Option<usize>, offset: (u16, u16)) -> Self {
         Self {
             action: DragAction::Move,
@@ -107,6 +115,7 @@ impl Drag {
         }
     }
 
+    /// Drag data for a resize.
     fn new_resize(handle: WinHandle, snap: Option<usize>, action: DragAction) -> Self {
         Self {
             action,
@@ -137,25 +146,30 @@ impl Default for DecoMeta {
 }
 
 impl DecoOne {
+    /// Create window manager.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Block for the window.
     pub fn block(mut self, block: Block<'static>) -> Self {
         self.block = Some(block);
         self
     }
 
+    /// Title style for the window.
     pub fn title_style(mut self, style: Style) -> Self {
         self.title_style = style;
         self
     }
 
+    /// Title alignment.
     pub fn title_alignment(mut self, align: Alignment) -> Self {
         self.title_alignment = align;
         self
     }
 
+    /// Focus style.
     pub fn focus_style(mut self, style: Style) -> Self {
         self.focus_style = Some(style);
         self
@@ -163,6 +177,9 @@ impl DecoOne {
 }
 
 impl DecoOne {
+    /// Window manager operation.
+    ///
+    /// Calculate areas and flags for the given window.
     pub fn prepare_window(&self, handle: WinHandle, flags: WinFlags, state: &mut DecoOneState) {
         let win_area = state.window_area(handle);
 
@@ -231,16 +248,19 @@ impl DecoOne {
         };
     }
 
+    /// Get the correctly sized buffer to render the given window.
     pub fn get_buffer(&self, handle: WinHandle, state: &mut DecoOneState) -> Buffer {
         let mut tmp = mem::take(&mut state.tmp);
         tmp.resize(state.window_area(handle));
         tmp
     }
 
+    /// Set back the buffer for later reuse.
     pub fn set_buffer(&self, tmp: Buffer, state: &mut DecoOneState) {
         state.tmp = tmp;
     }
 
+    /// Render the window decorations.
     pub fn render_window(&mut self, handle: WinHandle, tmp: &mut Buffer, state: &mut DecoOneState) {
         let meta = state.meta.get(&handle).expect("window");
 
@@ -285,6 +305,7 @@ impl DecoOne {
         }
     }
 
+    /// Copy the temporary buffer to screen.
     pub fn shift_clip_copy(
         &self,
         tmp: &mut Buffer,
