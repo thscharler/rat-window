@@ -257,7 +257,7 @@ where
     /// You can add new windows during this operation.
     /// Everything else is a breeze anyway.
     ///
-    pub fn run_for_mut<R>(&self, handle: WinHandle, f: &mut dyn FnMut(&mut T) -> R) -> R {
+    pub fn run_for_window<R>(&self, handle: WinHandle, f: &mut dyn FnMut(&mut T) -> R) -> R {
         let window = self.windows.borrow_mut().remove(&handle).expect("window");
 
         // todo: make this panic safe

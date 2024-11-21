@@ -42,7 +42,7 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for &WindowsState<dy
                         // forward to all windows
                         'f: {
                             for handle in self.windows().into_iter().rev() {
-                                let r = self.run_for_mut(handle, &mut |window| {
+                                let r = self.run_for_window(handle, &mut |window| {
                                     window.handle(&event_relocated, Regular)
                                 });
                                 if r.is_consumed() {
@@ -60,7 +60,7 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for &WindowsState<dy
                     'f: {
                         for handle in self.windows().into_iter().rev() {
                             let r = self
-                                .run_for_mut(handle, &mut |window| window.handle(event, Regular));
+                                .run_for_window(handle, &mut |window| window.handle(event, Regular));
                             if r.is_consumed() {
                                 break 'f r;
                             }
