@@ -111,7 +111,7 @@ fn handle_windows(
         _ => Outcome::Continue,
     };
 
-    let r = r.or_else(|| state.win.handle(event, Regular));
+    let r = r.or_else(|| (&state.win).handle(event, Regular));
 
     Ok(max(f, r))
 }

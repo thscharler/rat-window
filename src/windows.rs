@@ -52,6 +52,7 @@ where
 }
 
 impl<T: ?Sized> Windows<T> {
+    /// New windows
     pub fn new(manager: DecoOne) -> Self {
         Self {
             offset: Default::default(),
@@ -60,6 +61,13 @@ impl<T: ?Sized> Windows<T> {
         }
     }
 
+    /// Set an offset for rendering the windows.
+    /// With this offset it's possible to move windows partially
+    /// outside the windows area to the left and top.
+    ///
+    /// The offset given defines the top-left corner of the Windows widget.
+    ///
+    /// This uses __window__ coordinates.
     pub fn offset(mut self, offset: Position) -> Self {
         self.offset = offset;
         self
@@ -112,6 +120,7 @@ impl<T> WindowsState<T>
 where
     T: WinState + ?Sized + 'static,
 {
+    /// New state.
     pub fn new() -> Self {
         Self {
             area: Default::default(),
@@ -122,14 +131,17 @@ where
         }
     }
 
+    /// Current offset for windows.
     pub fn offset(&self) -> Position {
         self.manager_state.borrow().offset()
     }
 
+    /// Area of the given window.
     pub fn window_area(&self, handle: WinHandle) -> Rect {
         self.manager_state.borrow().window_area(handle)
     }
 
+    /// Set the area of a window.
     pub fn set_window_area(&self, handle: WinHandle, area: Rect) {
         self.manager_state
             .borrow_mut()
@@ -137,18 +149,22 @@ where
         self.manager_state.borrow_mut().set_base_size(handle, area);
     }
 
+    /// This window has the focus?
     pub fn is_window_focused(&self, handle: WinHandle) -> bool {
         self.manager_state.borrow().is_window_focused(handle)
     }
 
+    /// Return the focused window handle.
     pub fn focused_window(&self) -> Option<WinHandle> {
         self.manager_state.borrow().focused_window()
     }
 
+    /// Set the focused window.
     pub fn set_focused_window(&self, handle: WinHandle) -> bool {
         self.manager_state.borrow_mut().set_focused_window(handle)
     }
 
+    /// List of all windows in rendering order.
     pub fn windows(&self) -> Vec<WinHandle> {
         self.manager_state.borrow().windows()
     }
@@ -162,6 +178,7 @@ where
         manager_state.window_at(pos)
     }
 
+    /// Open a new window.
     pub fn open_window(&self, window: Rc<RefCell<T>>, area: Rect) -> WinHandle {
         let handle = self.new_handle();
 
@@ -177,6 +194,7 @@ where
         handle
     }
 
+    /// Close a window.
     pub fn close_window(&self, handle: WinHandle) -> bool {
         if self.windows.borrow_mut().remove(&handle).is_none() {
             // temporarily removed from the window list.
@@ -186,10 +204,12 @@ where
         true
     }
 
+    /// Move a window to front.
     pub fn window_to_front(&self, handle: WinHandle) -> bool {
         self.manager_state.borrow_mut().window_to_front(handle)
     }
 
+    /// Get the window for the given handle.
     pub fn window(&self, handle: WinHandle) -> Rc<RefCell<T>> {
         self.windows.borrow().get(&handle).expect("window").clone()
     }
@@ -237,15 +257,11 @@ where
     /// You can add new windows during this operation.
     /// Everything else is a breeze anyway.
     ///
-    pub fn run_for_mut<R>(
-        &mut self,
-        handle: WinHandle,
-        f: &mut dyn FnMut(&mut WindowsState<T>, &mut T) -> R,
-    ) -> R {
+    pub fn run_for_mut<R>(&self, handle: WinHandle, f: &mut dyn FnMut(&mut T) -> R) -> R {
         let window = self.windows.borrow_mut().remove(&handle).expect("window");
 
         // todo: make this panic safe
-        let r = f(self, &mut window.borrow_mut());
+        let r = f(&mut window.borrow_mut());
 
         // not removed by the call to f()?
         if !self.closed_windows.borrow_mut().remove(&handle) {

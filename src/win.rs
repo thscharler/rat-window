@@ -7,10 +7,18 @@ use ratatui::layout::Rect;
 use std::any::{Any, TypeId};
 use std::fmt::Debug;
 
+///
+/// Trait for rendering the contents of a widget.
+///
+/// TODO: change to StatefulWidgetRef once #1505 is released.
+///
 pub trait WinWidget {
     fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut dyn WinState);
 }
 
+///
+/// State for a window.
+///
 pub trait WinState: Any + Debug {
     /// Set the handle used for this window.
     fn set_handle(&mut self, handle: WinHandle);
@@ -49,6 +57,7 @@ impl dyn WinState {
     }
 }
 
+// todo: split Regular and MouseOnly once there are keyboard bindings.
 impl HandleEvent<crossterm::event::Event, Regular, Outcome> for &WindowsState<dyn WinState> {
     fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> Outcome {
         use crossterm::event::Event;

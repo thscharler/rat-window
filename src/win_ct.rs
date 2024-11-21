@@ -1,6 +1,11 @@
 use crate::{WinState, WindowsState};
 use rat_event::{ConsumedEvent, HandleEvent, Outcome, Regular};
 
+///
+/// Trait for a window with event handling.
+///
+/// Reuses [WinState] and adds event handling.
+///
 pub trait WinCtState
 where
     Self: WinState,
@@ -8,7 +13,7 @@ where
 {
 }
 
-impl HandleEvent<crossterm::event::Event, Regular, Outcome> for WindowsState<dyn WinCtState> {
+impl HandleEvent<crossterm::event::Event, Regular, Outcome> for &WindowsState<dyn WinCtState> {
     fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> Outcome {
         use crossterm::event::Event;
 
@@ -37,7 +42,7 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for WindowsState<dyn
                         // forward to all windows
                         'f: {
                             for handle in self.windows().into_iter().rev() {
-                                let r = self.run_for_mut(handle, &mut |_state, window| {
+                                let r = self.run_for_mut(handle, &mut |window| {
                                     window.handle(&event_relocated, Regular)
                                 });
                                 if r.is_consumed() {
@@ -54,9 +59,8 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for WindowsState<dyn
                     // forward to all windows
                     'f: {
                         for handle in self.windows().into_iter().rev() {
-                            let r = self.run_for_mut(handle, &mut |_state, window| {
-                                window.handle(event, Regular)
-                            });
+                            let r = self
+                                .run_for_mut(handle, &mut |window| window.handle(event, Regular));
                             if r.is_consumed() {
                                 break 'f r;
                             }
