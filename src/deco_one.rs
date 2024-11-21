@@ -24,36 +24,31 @@ pub struct DecoOne {
 
 #[derive(Debug, Default)]
 pub struct DecoOneState {
-    /// Temporary buffer for rendering.
-    tmp: Buffer,
-
-    /// Render offset.
-    offset: Position,
     /// View area in screen coordinates.
     area: Rect,
+
+    /// Temporary buffer for rendering.
+    tmp: Buffer,
+    /// Render offset. All coordinates are shifted by this
+    /// value before rendering.
+    offset: Position,
 
     /// Window metadata.
     meta: HashMap<WinHandle, DecoMeta>,
     /// Rendering order. Back to front.
     order: Vec<WinHandle>,
-
     /// Currently dragged mode and window
-    drag_action: DragAction,
-    drag_handle: Option<WinHandle>,
-    /// Offset mouse cursor to window origin.
-    drag_offset: (u16, u16),
+    drag: Option<Drag>,
 
-    /// resize areas. when inside a resize to b during move.
-    resize_areas: Vec<(Rect, Rect)>,
+    /// snap to tile areas. when inside a resize to b during move.
+    snap_areas: Vec<(Vec<Rect>, Rect)>,
 
     /// mouse flags
     mouse: MouseFlags,
 }
 
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 enum DragAction {
-    #[default]
-    None,
     Move,
     ResizeLeft,
     ResizeRight,
@@ -63,26 +58,68 @@ enum DragAction {
 }
 
 #[derive(Debug)]
+struct Drag {
+    // drag what?
+    action: DragAction,
+    // window
+    handle: WinHandle,
+    // snap before the drag
+    base_snap: Option<usize>,
+    // offset window origin to mouse cursor.
+    win_offset: (u16, u16),
+}
+
+#[derive(Debug)]
 struct DecoMeta {
+    // base-line size of the window.
     base_size: Rect,
+    // currently snapped to this snap region.
+    snapped_to: Option<usize>,
+    // effective window size.
     window_area: Rect,
+    // area for the window content.
     widget_area: Rect,
 
+    // close icon
     close_area: Rect,
+    // drag to move
     move_area: Rect,
+    // drag to resize
     resize_left_area: Rect,
     resize_right_area: Rect,
     resize_bottom_left_area: Rect,
     resize_bottom_area: Rect,
     resize_bottom_right_area: Rect,
 
+    // display parameters
     flags: WinFlags,
+}
+
+impl Drag {
+    fn new_move(handle: WinHandle, snap: Option<usize>, offset: (u16, u16)) -> Self {
+        Self {
+            action: DragAction::Move,
+            handle,
+            base_snap: snap,
+            win_offset: offset,
+        }
+    }
+
+    fn new_resize(handle: WinHandle, snap: Option<usize>, action: DragAction) -> Self {
+        Self {
+            action,
+            handle,
+            base_snap: snap,
+            win_offset: (0, 0),
+        }
+    }
 }
 
 impl Default for DecoMeta {
     fn default() -> Self {
         Self {
             base_size: Default::default(),
+            snapped_to: None,
             window_area: Default::default(),
             widget_area: Default::default(),
             close_area: Default::default(),
@@ -262,53 +299,67 @@ impl DecoOneState {
         Self::default()
     }
 
+    /// Current offset used for rendering.
     pub fn offset(&self) -> Position {
         self.offset
     }
 
+    /// Current offset used for rendering.
     pub fn set_offset(&mut self, offset: Position) {
         self.offset = offset;
     }
 
+    /// Current windows area.
+    /// In __screen__ coordinates.
     pub fn area(&self) -> Rect {
         self.area
     }
 
+    // todo: xxx
     pub fn set_area(&mut self, area: Rect) {
         self.area = area;
-        self.calculate_hot();
+        self.calculate_snaps();
     }
 
+    /// Add a new window
     pub fn insert(&mut self, handle: WinHandle) {
+        assert!(!self.meta.contains_key(&handle));
         self.meta.insert(handle, DecoMeta::default());
         self.order.push(handle);
     }
 
+    /// Remove a window.
     pub fn remove(&mut self, handle: WinHandle) {
         self.meta.remove(&handle);
         self.order.retain(|v| *v != handle);
     }
 
+    /// Active window area.
     pub fn window_area(&self, handle: WinHandle) -> Rect {
         self.meta.get(&handle).expect("window").window_area
     }
 
+    /// Active window area.
     pub fn set_window_area(&mut self, handle: WinHandle, area: Rect) {
         self.meta.get_mut(&handle).expect("window").window_area = area;
     }
 
-    pub fn base_size(&self, handle: WinHandle) -> Rect {
+    /// Base area of the window when not snapped to a region.
+    pub fn base_area(&self, handle: WinHandle) -> Rect {
         self.meta.get(&handle).expect("window").base_size
     }
 
+    /// Base area of the window when not snapped to a region.
     pub fn set_base_size(&mut self, handle: WinHandle, size: Rect) {
         self.meta.get_mut(&handle).expect("window").base_size = size;
     }
 
+    /// Area for the window content.
     pub fn window_widget_area(&self, handle: WinHandle) -> Rect {
         self.meta.get(&handle).expect("window").widget_area
     }
 
+    /// Area for the window content.
     pub fn set_window_widget_area(&mut self, handle: WinHandle, area: Rect) {
         self.meta.get_mut(&handle).expect("window").widget_area = area;
     }
@@ -399,8 +450,9 @@ impl DecoOneState {
 }
 
 impl DecoOneState {
-    fn calculate_hot(&mut self) {
-        self.resize_areas.clear();
+    /// Calculate the snap areas.
+    fn calculate_snaps(&mut self) {
+        self.snap_areas.clear();
 
         let area = Rect::from((
             self.screen_to_win(self.area.as_position())
@@ -411,44 +463,36 @@ impl DecoOneState {
         let w_clip = area.width / 5;
         let h_clip = area.height / 5;
 
-        // snap-click to top
-        self.resize_areas.push((
-            Rect::new(area.x + w_clip, area.y, area.width - 2 * w_clip, 1),
-            Rect::new(area.x, area.y, area.width, area.height / 2),
-        ));
-        // snap-click to bottom
-        self.resize_areas.push((
-            Rect::new(
-                area.x + w_clip,
-                (area.y + area.height).saturating_sub(1),
-                area.width - 2 * w_clip,
-                1,
-            ),
-            Rect::new(
+        // 0: left
+        self.snap_areas.push((
+            vec![Rect::new(
                 area.x,
-                area.y + area.height / 2,
-                area.width,
-                area.height - area.height / 2,
-            ),
-        ));
-        // left
-        self.resize_areas.push((
-            Rect::new(area.x, area.y + h_clip, 1, area.height - 2 * h_clip),
+                area.y + h_clip,
+                1,
+                area.height - 2 * h_clip,
+            )],
             Rect::new(area.x, area.y, area.width / 2, area.height),
         ));
-        // alt left
-        self.resize_areas.push((
-            Rect::new(area.x + 1, area.y + h_clip, 1, area.height - 2 * h_clip),
+
+        // 1: alt left
+        self.snap_areas.push((
+            vec![Rect::new(
+                area.x + 1,
+                area.y + h_clip,
+                1,
+                area.height - 2 * h_clip,
+            )],
             Rect::new(area.x, area.y, area.width * 6 / 10, area.height),
         ));
-        // right
-        self.resize_areas.push((
-            Rect::new(
+
+        // 2: right
+        self.snap_areas.push((
+            vec![Rect::new(
                 (area.x + area.width).saturating_sub(1),
                 area.y + h_clip,
                 1,
                 area.height - 2 * h_clip,
-            ),
+            )],
             Rect::new(
                 area.x + area.width / 2,
                 area.y,
@@ -456,14 +500,15 @@ impl DecoOneState {
                 area.height,
             ),
         ));
-        // alt right
-        self.resize_areas.push((
-            Rect::new(
+
+        // 3: alt right
+        self.snap_areas.push((
+            vec![Rect::new(
                 (area.x + area.width).saturating_sub(2),
                 area.y + h_clip,
                 1,
                 area.height - 2 * h_clip,
-            ),
+            )],
             Rect::new(
                 area.x + area.width * 4 / 10,
                 area.y,
@@ -471,23 +516,59 @@ impl DecoOneState {
                 area.height,
             ),
         ));
-        // top left
-        self.resize_areas.push((
-            Rect::new(area.x, area.y, w_clip, 1),
-            Rect::new(area.x, area.y, area.width / 2, area.height / 2),
-        ));
-        self.resize_areas.push((
-            Rect::new(area.x, area.y, 1, h_clip),
-            Rect::new(area.x, area.y, area.width / 2, area.height / 2),
-        ));
-        // top right
-        self.resize_areas.push((
-            Rect::new(
-                (area.x + area.width - w_clip).saturating_sub(1),
+
+        // 4: snap-click to top
+        self.snap_areas.push((
+            vec![Rect::new(
+                area.x + w_clip,
                 area.y,
-                w_clip,
+                area.width - 2 * w_clip,
                 1,
+            )],
+            Rect::new(area.x, area.y, area.width, area.height / 2),
+        ));
+
+        // 5: snap-click to bottom
+        self.snap_areas.push((
+            vec![Rect::new(
+                area.x + w_clip,
+                (area.y + area.height).saturating_sub(1),
+                area.width - 2 * w_clip,
+                1,
+            )],
+            Rect::new(
+                area.x,
+                area.y + area.height / 2,
+                area.width,
+                area.height - area.height / 2,
             ),
+        ));
+
+        // 6: top left
+        self.snap_areas.push((
+            vec![
+                Rect::new(area.x, area.y, w_clip, 1),
+                Rect::new(area.x, area.y, 1, h_clip),
+            ],
+            Rect::new(area.x, area.y, area.width / 2, area.height / 2),
+        ));
+
+        // 7: top right
+        self.snap_areas.push((
+            vec![
+                Rect::new(
+                    (area.x + area.width - w_clip).saturating_sub(1),
+                    area.y,
+                    w_clip,
+                    1,
+                ),
+                Rect::new(
+                    (area.x + area.width).saturating_sub(1), //
+                    area.y,
+                    1,
+                    h_clip,
+                ),
+            ],
             Rect::new(
                 area.x + area.width / 2,
                 area.y,
@@ -495,28 +576,23 @@ impl DecoOneState {
                 area.height / 2,
             ),
         ));
-        self.resize_areas.push((
-            Rect::new(
-                (area.x + area.width).saturating_sub(1), //
-                area.y,
-                1,
-                h_clip,
-            ),
-            Rect::new(
-                area.x + area.width / 2,
-                area.y,
-                area.width - area.width / 2,
-                area.height / 2,
-            ),
-        ));
-        // bottom left
-        self.resize_areas.push((
-            Rect::new(
-                area.x, //
-                (area.y + area.height).saturating_sub(1),
-                w_clip,
-                1,
-            ),
+
+        // 8: bottom left
+        self.snap_areas.push((
+            vec![
+                Rect::new(
+                    area.x, //
+                    (area.y + area.height).saturating_sub(1),
+                    w_clip,
+                    1,
+                ),
+                Rect::new(
+                    area.x,
+                    (area.y + area.height - h_clip).saturating_sub(1),
+                    1,
+                    h_clip,
+                ),
+            ],
             Rect::new(
                 area.x,
                 area.y + area.height / 2,
@@ -524,28 +600,23 @@ impl DecoOneState {
                 area.height - area.height / 2,
             ),
         ));
-        self.resize_areas.push((
-            Rect::new(
-                area.x,
-                (area.y + area.height - h_clip).saturating_sub(1),
-                1,
-                h_clip,
-            ),
-            Rect::new(
-                area.x,
-                area.y + area.height / 2,
-                area.width / 2,
-                area.height - area.height / 2,
-            ),
-        ));
-        // bottom right
-        self.resize_areas.push((
-            Rect::new(
-                (area.x + area.width - w_clip).saturating_sub(1),
-                (area.y + area.height).saturating_sub(1),
-                w_clip,
-                1,
-            ),
+
+        // 9: bottom right
+        self.snap_areas.push((
+            vec![
+                Rect::new(
+                    (area.x + area.width - w_clip).saturating_sub(1),
+                    (area.y + area.height).saturating_sub(1),
+                    w_clip,
+                    1,
+                ),
+                Rect::new(
+                    (area.x + area.width).saturating_sub(1),
+                    (area.y + area.height - h_clip).saturating_sub(1),
+                    1,
+                    h_clip,
+                ),
+            ],
             Rect::new(
                 area.x + area.width / 2,
                 area.y + area.height / 2,
@@ -553,19 +624,14 @@ impl DecoOneState {
                 area.height - area.height / 2,
             ),
         ));
-        self.resize_areas.push((
-            Rect::new(
-                (area.x + area.width).saturating_sub(1),
-                (area.y + area.height - h_clip).saturating_sub(1),
-                1,
-                h_clip,
-            ),
-            Rect::new(
-                area.x + area.width / 2,
-                area.y + area.height / 2,
-                area.width - area.width / 2,
-                area.height - area.height / 2,
-            ),
+
+        // 10: full area
+        self.snap_areas.push((
+            Vec::default(),
+            Rect::from((
+                self.screen_to_win(self.area.as_position()).expect("area"),
+                self.area.as_size(),
+            )),
         ));
     }
 
@@ -609,35 +675,190 @@ impl DecoOneState {
         base_size: Size,
         pos: Position,
         max: (u16, u16),
-    ) -> Rect {
-        win_area.x = pos.x.saturating_sub(self.drag_offset.0);
-        win_area.y = pos.y.saturating_sub(self.drag_offset.1);
+    ) -> (Option<usize>, Rect) {
+        // match a snap area?
+        for (idx, (snap_area, resize_to)) in self.snap_areas.iter().enumerate() {
+            if snap_area.iter().find(|v| v.contains(pos)).is_some() {
+                return (Some(idx), *resize_to);
+            }
+        }
+
+        let Some(drag) = &self.drag else {
+            panic!("drag not active")
+        };
+
+        // regular move
+        win_area.x = pos.x.saturating_sub(drag.win_offset.0);
+        win_area.y = pos.y.saturating_sub(drag.win_offset.1);
         win_area.width = base_size.width;
         win_area.height = base_size.height;
 
-        let mut hit_hot = false;
-        for (hot_area, resize_to) in self.resize_areas.iter() {
-            if hot_area.contains(pos) {
-                hit_hot = true;
-                win_area = *resize_to;
-                break;
-            }
+        if win_area.y < self.offset.y {
+            win_area.y = self.offset.y;
+        } else if win_area.y >= max.1 {
+            win_area.y = max.1;
         }
-        if !hit_hot {
-            if win_area.y < self.offset.y {
-                win_area.y = self.offset.y;
-            } else if win_area.y >= max.1 {
-                win_area.y = max.1;
+        if win_area.x + win_area.width < self.offset.x {
+            win_area.x = self.offset.x.saturating_sub(win_area.width);
+        }
+        if win_area.x >= max.0 {
+            win_area.x = max.0;
+        }
+        (None, win_area)
+    }
+}
+
+impl DecoOneState {
+    /// Start dragging.
+    fn initiate_drag(&mut self, handle: WinHandle, pos: Position) -> bool {
+        if let Some(meta) = self.meta.get(&handle) {
+            if meta.move_area.contains(pos) {
+                self.drag = Some(Drag::new_move(
+                    handle,
+                    meta.snapped_to,
+                    if meta.window_area.as_size() != meta.base_size.as_size() {
+                        (0, 0).into()
+                    } else {
+                        (pos.x - meta.move_area.x, pos.y - meta.move_area.y).into()
+                    },
+                ));
+                true
+            } else if meta.resize_right_area.contains(pos) {
+                self.drag = Some(Drag::new_resize(
+                    handle,
+                    meta.snapped_to,
+                    DragAction::ResizeRight,
+                ));
+                true
+            } else if meta.resize_bottom_right_area.contains(pos) {
+                self.drag = Some(Drag::new_resize(
+                    handle,
+                    meta.snapped_to,
+                    DragAction::ResizeBottomRight,
+                ));
+                true
+            } else if meta.resize_bottom_area.contains(pos) {
+                self.drag = Some(Drag::new_resize(
+                    handle,
+                    meta.snapped_to,
+                    DragAction::ResizeBottom,
+                ));
+                true
+            } else if meta.resize_bottom_left_area.contains(pos) {
+                self.drag = Some(Drag::new_resize(
+                    handle,
+                    meta.snapped_to,
+                    DragAction::ResizeBottomLeft,
+                ));
+                true
+            } else if meta.resize_left_area.contains(pos) {
+                self.drag = Some(Drag::new_resize(
+                    handle,
+                    meta.snapped_to,
+                    DragAction::ResizeLeft,
+                ));
+                true
+            } else {
+                false
             }
-            if win_area.x + win_area.width < self.offset.x {
-                win_area.x = self.offset.x.saturating_sub(win_area.width);
+        } else {
+            false
+        }
+    }
+
+    /// Updates during drag.
+    fn update_drag(&mut self, pos: Position) -> bool {
+        let Some(drag) = &self.drag else {
+            panic!("drag not active")
+        };
+
+        let max_x = (self.offset.x + self.area.width).saturating_sub(1);
+        let max_y = (self.offset.y + self.area.height).saturating_sub(1);
+        let base_area = self.base_area(drag.handle);
+        let win_area = self.window_area(drag.handle);
+
+        let (snap, new) = match drag.action {
+            DragAction::Move => {
+                self.calculate_move(win_area, base_area.as_size(), pos, (max_x, max_y))
             }
-            if win_area.x >= max.0 {
-                win_area.x = max.0;
+            DragAction::ResizeLeft => (None, self.calculate_resize_left(win_area, pos)),
+            DragAction::ResizeRight => (None, self.calculate_resize_right(win_area, pos, max_x)),
+            DragAction::ResizeBottomLeft => {
+                let tmp = self.calculate_resize_left(win_area, pos);
+                let tmp = self.calculate_resize_bottom(tmp, pos, max_y);
+                (None, tmp)
+            }
+            DragAction::ResizeBottom => (None, self.calculate_resize_bottom(win_area, pos, max_y)),
+            DragAction::ResizeBottomRight => {
+                let tmp = self.calculate_resize_right(win_area, pos, max_x);
+                let tmp = self.calculate_resize_bottom(tmp, pos, max_y);
+                (None, tmp)
+            }
+        };
+
+        let meta = self.meta.get_mut(&drag.handle).expect("window");
+        meta.snapped_to = snap;
+        meta.window_area = new;
+
+        true
+    }
+
+    /// Finished drag.
+    fn commit_drag(&mut self) -> bool {
+        let Some(drag) = &self.drag else {
+            panic!("drag not active")
+        };
+
+        let meta = self.meta.get_mut(&drag.handle).expect("window");
+        match drag.action {
+            DragAction::Move => {
+                if meta.snapped_to.is_none() {
+                    meta.base_size = meta.window_area;
+                }
+            }
+            _ => {
+                meta.snapped_to = None;
+                meta.base_size = meta.window_area;
             }
         }
 
-        win_area
+        self.drag = None;
+        true
+    }
+
+    /// Cancel drag.
+    fn cancel_drag(&mut self) -> bool {
+        let Some(drag) = &self.drag else {
+            panic!("drag not active")
+        };
+
+        let meta = self.meta.get_mut(&drag.handle).expect("window");
+        meta.snapped_to = drag.base_snap;
+        meta.window_area = meta.base_size;
+
+        self.drag = None;
+        true
+    }
+
+    // flip maximized state
+    fn flip_maximize(&mut self, handle: WinHandle, pos: Position) -> bool {
+        if let Some(meta) = self.meta.get_mut(&handle) {
+            if meta.move_area.contains(pos) && !self.snap_areas.is_empty() {
+                if meta.snapped_to.is_none() {
+                    meta.snapped_to = Some(self.snap_areas.len() - 1);
+                    meta.window_area = self.snap_areas[self.snap_areas.len() - 1].1;
+                } else {
+                    meta.snapped_to = None;
+                    meta.window_area = meta.base_size;
+                }
+                self.drag = None;
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
     }
 }
 
@@ -646,27 +867,8 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
         match event {
             ct_event!(mouse any for m) if self.mouse.doubleclick(self.area, m) => {
                 let pos = Position::new(m.column, m.row);
-
                 if let Some(handle) = self.window_at(pos) {
-                    if let Some(meta) = self.meta.get(&handle) {
-                        if meta.move_area.contains(pos) {
-                            let area = Rect::from((
-                                self.screen_to_win(self.area.as_position()).expect("area"),
-                                self.area.as_size(),
-                            ));
-                            let win_area = self.window_area(handle);
-                            if area == win_area {
-                                self.set_window_area(handle, self.base_size(handle));
-                            } else {
-                                self.set_window_area(handle, area);
-                            }
-                            Outcome::Changed
-                        } else {
-                            Outcome::Continue
-                        }
-                    } else {
-                        Outcome::Continue
-                    }
+                    self.flip_maximize(handle, pos).into()
                 } else {
                     Outcome::Continue
                 }
@@ -674,110 +876,37 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
             ct_event!(mouse down Left for x,y) => {
                 let pos = Position::new(*x, *y);
                 if let Some(handle) = self.window_at(pos) {
-                    let r0 = if let Some(handle) = self.window_at(pos) {
-                        self.window_to_front(handle).into()
-                    } else {
-                        Outcome::Continue
-                    };
-
-                    let r1 = if let Some(meta) = self.meta.get(&handle) {
-                        if meta.move_area.contains(pos) {
-                            self.drag_action = DragAction::Move;
-                            self.drag_handle = Some(handle);
-                            if meta.window_area.as_size() != meta.base_size.as_size() {
-                                self.drag_offset = (0, 0).into();
-                            } else {
-                                self.drag_offset =
-                                    (*x - meta.move_area.x, *y - meta.move_area.y).into();
-                            }
-                            Outcome::Changed
-                        } else if meta.resize_right_area.contains(pos) {
-                            self.drag_action = DragAction::ResizeRight;
-                            self.drag_handle = Some(handle);
-                            Outcome::Changed
-                        } else if meta.resize_bottom_right_area.contains(pos) {
-                            self.drag_action = DragAction::ResizeBottomRight;
-                            self.drag_handle = Some(handle);
-                            Outcome::Changed
-                        } else if meta.resize_bottom_area.contains(pos) {
-                            self.drag_action = DragAction::ResizeBottom;
-                            self.drag_handle = Some(handle);
-                            Outcome::Changed
-                        } else if meta.resize_bottom_left_area.contains(pos) {
-                            self.drag_action = DragAction::ResizeBottomLeft;
-                            self.drag_handle = Some(handle);
-                            Outcome::Changed
-                        } else if meta.resize_left_area.contains(pos) {
-                            self.drag_action = DragAction::ResizeLeft;
-                            self.drag_handle = Some(handle);
-                            Outcome::Changed
-                        } else {
-                            Outcome::Continue
-                        }
-                    } else {
-                        Outcome::Continue
-                    };
+                    // to front
+                    let r0 = self.window_to_front(handle).into();
+                    // initiate drag
+                    let r1 = self.initiate_drag(handle, pos).into();
 
                     max(r0, r1)
                 } else {
                     Outcome::Continue
                 }
             }
-            ct_event!(mouse up Left for x,y) => {
-                if self.drag_handle.is_some() {
-                    self.drag_handle = None;
-                    self.drag_action = DragAction::default();
-                    self.drag_offset = Default::default();
-                    Outcome::Changed
+            ct_event!(mouse drag Left for x,y) => {
+                if self.drag.is_some() {
+                    self.update_drag(Position::new(*x, *y)).into()
                 } else {
                     Outcome::Continue
                 }
             }
-            ct_event!(mouse drag Left for x,y) => {
-                if let Some(handle) = self.drag_handle {
-                    let max_x = (self.offset.x + self.area.width).saturating_sub(1);
-                    let max_y = (self.offset.y + self.area.height).saturating_sub(1);
-                    let base_size = self.base_size(handle);
-
-                    let mut new = self.window_area(handle);
-                    new = match self.drag_action {
-                        DragAction::None => new,
-                        DragAction::Move => self.calculate_move(
-                            new,
-                            base_size.as_size(),
-                            Position::new(*x, *y),
-                            (max_x, max_y),
-                        ),
-                        DragAction::ResizeLeft => {
-                            self.calculate_resize_left(new, Position::new(*x, *y))
-                        }
-                        DragAction::ResizeRight => {
-                            self.calculate_resize_right(new, Position::new(*x, *y), max_x)
-                        }
-                        DragAction::ResizeBottomLeft => {
-                            new = self.calculate_resize_left(new, Position::new(*x, *y));
-                            self.calculate_resize_bottom(new, Position::new(*x, *y), max_y)
-                        }
-                        DragAction::ResizeBottom => {
-                            self.calculate_resize_bottom(new, Position::new(*x, *y), max_y)
-                        }
-                        DragAction::ResizeBottomRight => {
-                            new = self.calculate_resize_right(new, Position::new(*x, *y), max_x);
-                            self.calculate_resize_bottom(new, Position::new(*x, *y), max_y)
-                        }
-                    };
-                    self.set_window_area(handle, new);
-                    Outcome::Changed
+            ct_event!(mouse up Left for _x,_y) => {
+                if self.drag.is_some() {
+                    self.commit_drag().into()
                 } else {
                     Outcome::Continue
                 }
             }
             ct_event!(mouse moved for _x,_y) => {
                 // reset on fail otherwise
-                self.drag_handle = None;
-                self.drag_action = DragAction::default();
-                self.drag_offset = Default::default();
-                Outcome::Continue
+                if self.drag.is_some() {
+                    self.cancel_drag().into()
+                } else {
+                    Outcome::Continue
+                }
             }
 
             _ => Outcome::Continue,
