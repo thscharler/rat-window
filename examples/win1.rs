@@ -2,12 +2,11 @@ use crate::max_win::MaxWinState;
 use crate::min_win::MinWinState;
 use crate::mini_salsa::theme::THEME;
 use crate::mini_salsa::{run_ui, setup_logging, MiniSalsaState};
-use log::debug;
 use rat_event::{ct_event, ConsumedEvent, HandleEvent, Outcome, Regular};
-use rat_focus::{FocusBuilder, FocusContainer};
+use rat_focus::{FocusBuilder, FocusContainer, HasFocus};
 use rat_window::{DecoOne, WinCtState, Windows, WindowsState};
 use ratatui::layout::{Alignment, Constraint, Layout, Position, Rect};
-use ratatui::widgets::{Block, BorderType, StatefulWidget};
+use ratatui::widgets::{Block, BorderType, Borders, StatefulWidget};
 use ratatui::Frame;
 use std::cmp::max;
 
@@ -21,6 +20,7 @@ fn main() -> Result<(), anyhow::Error> {
     let mut state = State {
         win: WindowsState::new(),
     };
+    state.win.focus().set(true);
 
     run_ui(
         "win1",
@@ -65,11 +65,13 @@ fn repaint_windows(
             .block(
                 Block::bordered()
                     .border_type(BorderType::Thick)
+                    .borders(Borders::TOP)
                     .border_style(THEME.black(1)),
             )
             .title_style(THEME.black(1))
             .title_alignment(Alignment::Center)
-            .focus_style(THEME.focus()),
+            .focus_style(THEME.focus())
+            .meta_style(THEME.secondary(2)),
     )
     .offset(Position::new(10, 10))
     .render(hlayout[1], frame.buffer_mut(), &mut state.win);

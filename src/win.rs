@@ -57,7 +57,6 @@ impl dyn WinState {
     }
 }
 
-// todo: split Regular and MouseOnly once there are keyboard bindings.
 impl HandleEvent<crossterm::event::Event, Regular, Outcome> for &WindowsState<dyn WinState> {
     fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> Outcome {
         use crossterm::event::Event;

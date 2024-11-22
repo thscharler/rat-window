@@ -113,7 +113,10 @@ where
     }
 }
 
-impl<T> HasFocus for WindowsState<T> {
+impl<T> HasFocus for WindowsState<T>
+where
+    T: WinState + ?Sized + 'static,
+{
     fn focus(&self) -> FocusFlag {
         self.manager_state.borrow().focus()
     }

@@ -1,8 +1,9 @@
 use crate::util::{copy_buffer, revert_style};
 use crate::win_flags::WinFlags;
 use crate::windows::WinHandle;
+use log::debug;
 use rat_event::util::MouseFlags;
-use rat_event::{ct_event, HandleEvent, Outcome, Regular};
+use rat_event::{ct_event, ConsumedEvent, HandleEvent, Outcome, Regular};
 use rat_focus::{FocusFlag, HasFocus};
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Position, Rect, Size};
@@ -12,6 +13,7 @@ use ratatui::widgets::{Block, Widget, WidgetRef};
 use std::cmp::max;
 use std::collections::HashMap;
 use std::mem;
+use std::ops::Neg;
 
 ///
 /// Deco-One window manager.
@@ -21,7 +23,9 @@ pub struct DecoOne {
     block: Option<Block<'static>>,
     title_style: Style,
     title_alignment: Alignment,
+
     focus_style: Option<Style>,
+    meta_style: Option<Style>,
 }
 
 ///
@@ -189,6 +193,12 @@ impl DecoOne {
         self.focus_style = Some(style);
         self
     }
+
+    /// Meta style.
+    pub fn meta_style(mut self, style: Style) -> Self {
+        self.meta_style = Some(style);
+        self
+    }
 }
 
 impl DecoOne {
@@ -281,7 +291,11 @@ impl DecoOne {
 
         let focus = meta.flags.focus.get();
         let style = if focus {
-            self.focus_style.unwrap_or(revert_style(self.title_style))
+            if state.mode == KeyboardMode::Meta {
+                self.meta_style.unwrap_or(revert_style(self.title_style))
+            } else {
+                self.focus_style.unwrap_or(revert_style(self.title_style))
+            }
         } else {
             self.title_style
         };
@@ -425,6 +439,22 @@ impl DecoOneState {
             .is_focused()
     }
 
+    /// Focus the top window
+    pub fn focus_last_window(&mut self) -> bool {
+        for meta in self.meta.values_mut() {
+            meta.flags.focus.clear();
+        }
+        if let Some(handle) = self.order.last() {
+            self.meta
+                .get(&handle)
+                .expect("window")
+                .flags
+                .focus
+                .set(true);
+        }
+        true
+    }
+
     pub fn set_focused_window(&mut self, handle: WinHandle) -> bool {
         for meta in self.meta.values_mut() {
             meta.flags.focus.clear();
@@ -511,7 +541,7 @@ impl DecoOneState {
         let w_clip = area_win.width / 5;
         let h_clip = area_win.height / 5;
 
-        // 0: left
+        // '1': left
         self.snap_areas.push((
             vec![Rect::new(
                 area_win.x,
@@ -521,24 +551,7 @@ impl DecoOneState {
             )],
             Rect::new(area_win.x, area_win.y, area_win.width / 2, area_win.height),
         ));
-
-        // 1: alt left
-        self.snap_areas.push((
-            vec![Rect::new(
-                area_win.x + 1,
-                area_win.y + h_clip,
-                1,
-                area_win.height - 2 * h_clip,
-            )],
-            Rect::new(
-                area_win.x,
-                area_win.y,
-                area_win.width * 6 / 10,
-                area_win.height,
-            ),
-        ));
-
-        // 2: right
+        // '2': right
         self.snap_areas.push((
             vec![Rect::new(
                 (area_win.x + area_win.width).saturating_sub(1),
@@ -553,24 +566,7 @@ impl DecoOneState {
                 area_win.height,
             ),
         ));
-
-        // 3: alt right
-        self.snap_areas.push((
-            vec![Rect::new(
-                (area_win.x + area_win.width).saturating_sub(2),
-                area_win.y + h_clip,
-                1,
-                area_win.height - 2 * h_clip,
-            )],
-            Rect::new(
-                area_win.x + area_win.width * 4 / 10,
-                area_win.y,
-                area_win.width - area_win.width * 4 / 10,
-                area_win.height,
-            ),
-        ));
-
-        // 4: snap-click to top
+        // '3': top
         self.snap_areas.push((
             vec![Rect::new(
                 area_win.x + w_clip,
@@ -580,8 +576,7 @@ impl DecoOneState {
             )],
             Rect::new(area_win.x, area_win.y, area_win.width, area_win.height / 2),
         ));
-
-        // 5: snap-click to bottom
+        // '4': bottom
         self.snap_areas.push((
             vec![Rect::new(
                 area_win.x + w_clip,
@@ -596,8 +591,7 @@ impl DecoOneState {
                 area_win.height - area_win.height / 2,
             ),
         ));
-
-        // 6: top left
+        // '5': top left
         self.snap_areas.push((
             vec![
                 Rect::new(area_win.x, area_win.y, w_clip, 1),
@@ -610,8 +604,7 @@ impl DecoOneState {
                 area_win.height / 2,
             ),
         ));
-
-        // 7: top right
+        // '6': top right
         self.snap_areas.push((
             vec![
                 Rect::new(
@@ -634,8 +627,7 @@ impl DecoOneState {
                 area_win.height / 2,
             ),
         ));
-
-        // 8: bottom left
+        // '7: bottom left
         self.snap_areas.push((
             vec![
                 Rect::new(
@@ -658,8 +650,7 @@ impl DecoOneState {
                 area_win.height - area_win.height / 2,
             ),
         ));
-
-        // 9: bottom right
+        // '8': bottom right
         self.snap_areas.push((
             vec![
                 Rect::new(
@@ -683,7 +674,40 @@ impl DecoOneState {
             ),
         ));
 
-        // 10: full area
+        // '9' ... empty
+        self.snap_areas.push((Vec::default(), Rect::default()));
+
+        // 'a': alt left
+        self.snap_areas.push((
+            vec![Rect::new(
+                area_win.x + 1,
+                area_win.y + h_clip,
+                1,
+                area_win.height - 2 * h_clip,
+            )],
+            Rect::new(
+                area_win.x,
+                area_win.y,
+                area_win.width * 6 / 10,
+                area_win.height,
+            ),
+        ));
+        // 'b': alt right
+        self.snap_areas.push((
+            vec![Rect::new(
+                (area_win.x + area_win.width).saturating_sub(2),
+                area_win.y + h_clip,
+                1,
+                area_win.height - 2 * h_clip,
+            )],
+            Rect::new(
+                area_win.x + area_win.width * 4 / 10,
+                area_win.y,
+                area_win.width - area_win.width * 4 / 10,
+                area_win.height,
+            ),
+        ));
+        // 'c' or '0'==last: full area
         self.snap_areas.push((Vec::default(), self.area_win));
     }
 
@@ -920,11 +944,215 @@ impl DecoOneState {
             false
         }
     }
+
+    fn snap_to(&mut self, handle: WinHandle, snap_idx: usize) -> bool {
+        let Some(meta) = self.meta.get_mut(&handle) else {
+            panic!("invalid handle");
+        };
+
+        if snap_idx < self.snap_areas.len() {
+            if meta.snapped_to == Some(snap_idx) {
+                meta.snapped_to = None;
+                meta.window_area = meta.base_size;
+            } else {
+                meta.snapped_to = Some(snap_idx);
+                meta.window_area = self.snap_areas[snap_idx].1;
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    fn focus_next(&mut self) -> bool {
+        let mut focus_idx = 0;
+        for (idx, handle) in self.order.iter().enumerate() {
+            if self.is_window_focused(*handle) {
+                focus_idx = idx;
+                break;
+            }
+        }
+        focus_idx += 1;
+        if focus_idx >= self.order.len() {
+            focus_idx = 0;
+        }
+        if let Some(handle) = self.order.get(focus_idx).copied() {
+            self.set_focused_window(handle);
+            self.window_to_front(handle);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn focus_prev(&mut self) -> bool {
+        let mut focus_idx = 0;
+        for (idx, handle) in self.order.iter().enumerate() {
+            if self.is_window_focused(*handle) {
+                focus_idx = idx;
+                break;
+            }
+        }
+        if focus_idx > 0 {
+            focus_idx -= 1;
+        } else {
+            focus_idx = self.order.len().saturating_sub(1);
+        }
+        if let Some(handle) = self.order.get(focus_idx).copied() {
+            self.set_focused_window(handle);
+            self.window_to_front(handle);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn move_up(&mut self, handle: WinHandle) -> bool {
+        let Some(meta) = self.meta.get_mut(&handle) else {
+            panic!("invalid handle");
+        };
+        meta.snapped_to = None;
+        meta.window_area.y = meta.window_area.y.saturating_sub(1);
+        meta.base_size = meta.window_area;
+        true
+    }
+
+    fn move_down(&mut self, handle: WinHandle) -> bool {
+        let Some(meta) = self.meta.get_mut(&handle) else {
+            panic!("invalid handle");
+        };
+        meta.snapped_to = None;
+        meta.window_area.y = meta.window_area.y.saturating_add(1);
+        meta.base_size = meta.window_area;
+        true
+    }
+
+    fn move_left(&mut self, handle: WinHandle) -> bool {
+        let Some(meta) = self.meta.get_mut(&handle) else {
+            panic!("invalid handle");
+        };
+        meta.snapped_to = None;
+        meta.window_area.x = meta.window_area.x.saturating_sub(1);
+        meta.base_size = meta.window_area;
+        true
+    }
+
+    fn move_right(&mut self, handle: WinHandle) -> bool {
+        let Some(meta) = self.meta.get_mut(&handle) else {
+            panic!("invalid handle");
+        };
+        meta.snapped_to = None;
+        meta.window_area.x = meta.window_area.x.saturating_add(1);
+        meta.base_size = meta.window_area;
+        true
+    }
+
+    fn resize_top(&mut self, handle: WinHandle, by: i16) -> bool {
+        let Some(meta) = self.meta.get_mut(&handle) else {
+            panic!("invalid handle");
+        };
+        meta.snapped_to = None;
+        meta.window_area.y = meta.window_area.y.saturating_add_signed(by.neg());
+        meta.window_area.height = meta.window_area.height.saturating_add_signed(by);
+        meta.base_size = meta.window_area;
+        true
+    }
+
+    fn resize_bottom(&mut self, handle: WinHandle, by: i16) -> bool {
+        let Some(meta) = self.meta.get_mut(&handle) else {
+            panic!("invalid handle");
+        };
+        meta.snapped_to = None;
+        meta.window_area.height = meta.window_area.height.saturating_add_signed(by);
+        meta.base_size = meta.window_area;
+        true
+    }
+
+    fn resize_left(&mut self, handle: WinHandle, by: i16) -> bool {
+        let Some(meta) = self.meta.get_mut(&handle) else {
+            panic!("invalid handle");
+        };
+        meta.snapped_to = None;
+        meta.window_area.x = meta.window_area.x.saturating_add_signed(by.neg());
+        meta.window_area.width = meta.window_area.width.saturating_add_signed(by);
+        meta.base_size = meta.window_area;
+        true
+    }
+
+    fn resize_right(&mut self, handle: WinHandle, by: i16) -> bool {
+        let Some(meta) = self.meta.get_mut(&handle) else {
+            panic!("invalid handle");
+        };
+        meta.snapped_to = None;
+        meta.window_area.width = meta.window_area.width.saturating_add_signed(by);
+        meta.base_size = meta.window_area;
+        true
+    }
 }
 
 impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
     fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> Outcome {
-        match event {
+        let mut r = Outcome::Continue;
+
+        if self.focus.is_focused() {
+            r = r.or_else(|| match event {
+                ct_event!(keycode press F(8)) => {
+                    self.mode = match self.mode {
+                        KeyboardMode::Regular => KeyboardMode::Meta,
+                        KeyboardMode::Meta => KeyboardMode::Regular,
+                    };
+                    Outcome::Changed
+                }
+                _ => Outcome::Continue,
+            });
+        }
+        if self.mode == KeyboardMode::Meta && self.focus.is_focused() {
+            if self.focused_window().is_none() {
+                self.focus_last_window();
+            }
+            if let Some(handle) = self.focused_window() {
+                r = r.or_else(|| match event {
+                    ct_event!(keycode press Tab) => self.focus_next().into(),
+                    ct_event!(keycode press SHIFT-Tab) => self.focus_prev().into(),
+                    ct_event!(key press '0') => self
+                        .snap_to(handle, self.snap_areas.len().saturating_sub(1))
+                        .into(),
+                    ct_event!(key press f@'1'..='9') => {
+                        let snap_idx = *f as usize - '1' as usize;
+                        self.snap_to(handle, snap_idx).into()
+                    }
+                    ct_event!(key press f@'a'..='z') => {
+                        let snap_idx = (*f as usize - 'a' as usize) + 9;
+                        self.snap_to(handle, snap_idx).into()
+                    }
+
+                    ct_event!(keycode press Up) => self.move_up(handle).into(),
+                    ct_event!(keycode press CONTROL_SHIFT-Up) => self.resize_top(handle, 1).into(),
+                    ct_event!(keycode press CONTROL_SHIFT-Down) => {
+                        self.resize_top(handle, -1).into()
+                    }
+
+                    ct_event!(keycode press Down) => self.move_down(handle).into(),
+                    ct_event!(keycode press CONTROL-Down) => self.resize_bottom(handle, 1).into(),
+                    ct_event!(keycode press CONTROL-Up) => self.resize_bottom(handle, -1).into(),
+
+                    ct_event!(keycode press Left) => self.move_left(handle).into(),
+                    ct_event!(keycode press CONTROL_SHIFT-Left) => {
+                        self.resize_left(handle, 1).into()
+                    }
+                    ct_event!(keycode press CONTROL_SHIFT-Right) => {
+                        self.resize_left(handle, -1).into()
+                    }
+                    ct_event!(keycode press Right) => self.move_right(handle).into(),
+                    ct_event!(keycode press CONTROL-Left) => self.resize_right(handle, -1).into(),
+                    ct_event!(keycode press CONTROL-Right) => self.resize_right(handle, 1).into(),
+
+                    _ => Outcome::Continue,
+                });
+            }
+        }
+
+        r = r.or_else(|| match event {
             ct_event!(mouse any for m) if self.mouse.doubleclick(self.area_win, m) => {
                 let pos = Position::new(m.column, m.row);
                 if let Some(handle) = self.window_at(pos) {
@@ -938,10 +1166,12 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
                 if let Some(handle) = self.window_at(pos) {
                     // to front
                     let r0 = self.window_to_front(handle).into();
+                    // focus window
+                    let r1 = self.set_focused_window(handle).into();
                     // initiate drag
-                    let r1 = self.initiate_drag(handle, pos).into();
+                    let r2 = self.initiate_drag(handle, pos).into();
 
-                    max(r0, r1)
+                    max(max(r0, r1), r2)
                 } else {
                     Outcome::Continue
                 }
@@ -970,6 +1200,7 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
             }
 
             _ => Outcome::Continue,
-        }
+        });
+        r
     }
 }
