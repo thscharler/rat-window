@@ -511,7 +511,7 @@ impl WindowManagerState for DecoTwoState {
     /// Handle of the focused window.
     fn focused_window(&self) -> Option<WinHandle> {
         for handle in self.order.iter().rev().copied() {
-            if self.is_window_focused(handle) {
+            if self.is_focused_window(handle) {
                 return Some(handle);
             }
         }
@@ -550,8 +550,8 @@ impl WindowManagerState for DecoTwoState {
 
     /// Return a list of the window handles
     /// in rendering order.
-    fn windows(&self) -> &[WinHandle] {
-        self.order.as_slice()
+    fn windows(&self) -> Vec<WinHandle> {
+        self.order.clone()
     }
 
     /// Move a window to front.
@@ -564,11 +564,9 @@ impl WindowManagerState for DecoTwoState {
             true
         }
     }
-}
 
-impl DecoTwoState {
     /// Window at the given __screen__ position.
-    pub fn window_at(&self, pos: Position) -> Option<WinHandle> {
+    fn window_at(&self, pos: Position) -> Option<WinHandle> {
         let Some(pos) = self.screen_to_win(pos) else {
             return None;
         };
@@ -582,7 +580,7 @@ impl DecoTwoState {
     }
 
     /// Translate screen coordinates to window coordinates.
-    pub fn screen_to_win(&self, pos: Position) -> Option<Position> {
+    fn screen_to_win(&self, pos: Position) -> Option<Position> {
         if pos.x + self.offset.x >= self.area.x && pos.y + self.offset.y >= self.area.y {
             Some(Position::new(
                 (pos.x + self.offset.x).saturating_sub(self.area.x),
@@ -594,7 +592,7 @@ impl DecoTwoState {
     }
 
     /// Translate window coordinates to screen coordinates
-    pub fn win_to_screen(&self, pos: Position) -> Option<Position> {
+    fn win_to_screen(&self, pos: Position) -> Option<Position> {
         if pos.x + self.area.x >= self.offset.x && pos.y + self.area.y >= self.offset.y {
             Some(Position::new(
                 (pos.x + self.area.x).saturating_sub(self.offset.x),
@@ -1079,7 +1077,7 @@ impl DecoTwoState {
     fn focus_next(&mut self) -> bool {
         let mut focus_idx = 0;
         for (idx, handle) in self.order.iter().enumerate() {
-            if self.is_window_focused(*handle) {
+            if self.is_focused_window(*handle) {
                 focus_idx = idx;
                 break;
             }
@@ -1089,7 +1087,7 @@ impl DecoTwoState {
             focus_idx = 0;
         }
         if let Some(handle) = self.order.get(focus_idx).copied() {
-            self.set_focused_window(handle);
+            self.focus_window(handle);
             self.window_to_front(handle);
             true
         } else {
@@ -1100,7 +1098,7 @@ impl DecoTwoState {
     fn focus_prev(&mut self) -> bool {
         let mut focus_idx = 0;
         for (idx, handle) in self.order.iter().enumerate() {
-            if self.is_window_focused(*handle) {
+            if self.is_focused_window(*handle) {
                 focus_idx = idx;
                 break;
             }
@@ -1111,7 +1109,7 @@ impl DecoTwoState {
             focus_idx = self.order.len().saturating_sub(1);
         }
         if let Some(handle) = self.order.get(focus_idx).copied() {
-            self.set_focused_window(handle);
+            self.focus_window(handle);
             self.window_to_front(handle);
             true
         } else {
@@ -1220,7 +1218,7 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoTwoState {
         }
         if self.mode == KeyboardMode::Meta && self.focus.is_focused() {
             if self.focused_window().is_none() {
-                self.focus_last_window();
+                self.focus_top_window();
             }
             if let Some(handle) = self.focused_window() {
                 r = r.or_else(|| match event {
@@ -1279,7 +1277,7 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoTwoState {
                     // to front
                     let r0 = self.window_to_front(handle).into();
                     // focus window
-                    let r1 = self.set_focused_window(handle).into();
+                    let r1 = self.focus_window(handle).into();
                     // initiate drag
                     let r2 = self.initiate_drag(handle, pos).into();
 

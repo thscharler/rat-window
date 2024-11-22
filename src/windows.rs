@@ -1,7 +1,6 @@
-use crate::deco_one::{DecoOne, DecoOneState};
+use crate::window_manager::{WindowManager, WindowManagerState};
 use crate::WinState;
-use crossterm::event::MouseEvent;
-use rat_focus::{FocusFlag, HasFocus, Navigation, ZRect};
+use rat_focus::{FocusFlag, HasFocus, Navigation};
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
 use ratatui::prelude::StatefulWidget;
@@ -17,7 +16,11 @@ use std::rc::Rc;
 pub struct WinHandle(usize);
 
 #[derive(Debug)]
-pub struct Windows<T: ?Sized> {
+pub struct Windows<T, M>
+where
+    T: ?Sized,
+    M: WindowManager,
+{
     ///
     /// Offset of the rendered part of the [Windows] widget.
     ///
@@ -28,18 +31,19 @@ pub struct Windows<T: ?Sized> {
     ///
     /// Window manager.
     ///
-    manager: DecoOne,
+    manager: M,
 
     _phantom: PhantomData<T>,
 }
 
 #[derive(Debug)]
-pub struct WindowsState<T>
+pub struct WindowsState<T, M>
 where
     T: WinState + ?Sized + 'static,
+    M: WindowManager,
 {
     /// Window manager.
-    pub manager_state: RefCell<DecoOneState>,
+    pub manager_state: RefCell<M::State>,
 
     /// Handles
     max_handle: Cell<usize>,
@@ -49,9 +53,9 @@ where
     closed_windows: RefCell<HashSet<WinHandle>>,
 }
 
-impl<T: ?Sized> Windows<T> {
+impl<T: ?Sized, M: WindowManager> Windows<T, M> {
     /// New windows
-    pub fn new(manager: DecoOne) -> Self {
+    pub fn new(manager: M) -> Self {
         Self {
             offset: Default::default(),
             manager,
@@ -72,50 +76,52 @@ impl<T: ?Sized> Windows<T> {
     }
 }
 
-impl<T> StatefulWidget for Windows<T>
+impl<T, M> StatefulWidget for Windows<T, M>
 where
     T: WinState + ?Sized + 'static,
+    M: WindowManager,
 {
-    type State = WindowsState<T>;
+    type State = WindowsState<T, M>;
 
-    fn render(mut self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+    fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
         let mut manager_state = state.manager_state.borrow_mut();
         let mut windows = state.windows.borrow_mut();
 
         manager_state.set_offset(self.offset);
         manager_state.set_area(area);
 
-        for handle in manager_state.windows() {
+        for handle in manager_state.windows().iter().copied() {
             let window_state = windows.get_mut(&handle).expect("window");
             let mut window_state = window_state.borrow_mut();
 
             self.manager
-                .prepare_window(handle, window_state.get_flags(), &mut manager_state);
+                .render_init_window(handle, window_state.get_flags(), &mut manager_state);
 
-            let mut tmp = self.manager.get_buffer(handle, &mut manager_state);
-            let window_area = manager_state.window_widget_area(handle);
+            let (widget_area, mut tmp_buf) =
+                self.manager.render_init_buffer(handle, &mut manager_state);
 
             // window content
             let window_widget = window_state.get_widget();
-            window_widget.render_ref(window_area, &mut tmp, window_state.as_dyn());
+            window_widget.render_ref(widget_area, &mut tmp_buf, window_state.as_dyn());
 
             // window decorations
             self.manager
-                .render_window(handle, &mut tmp, &mut manager_state);
+                .render_window_frame(handle, &mut tmp_buf, &mut manager_state);
 
             // copy
             self.manager
-                .shift_clip_copy(&mut tmp, area, buf, &mut manager_state);
+                .render_copy_buffer(&mut tmp_buf, area, buf, &mut manager_state);
 
             // keep allocation
-            self.manager.set_buffer(tmp, &mut manager_state);
+            self.manager.render_free_buffer(tmp_buf, &mut manager_state);
         }
     }
 }
 
-impl<T> HasFocus for WindowsState<T>
+impl<T, M> HasFocus for WindowsState<T, M>
 where
     T: WinState + ?Sized + 'static,
+    M: WindowManager,
 {
     fn focus(&self) -> FocusFlag {
         self.manager_state.borrow().focus()
@@ -130,14 +136,15 @@ where
     }
 }
 
-impl<T> WindowsState<T>
+impl<T, M> WindowsState<T, M>
 where
     T: WinState + ?Sized + 'static,
+    M: WindowManager,
 {
     /// New state.
-    pub fn new() -> Self {
+    pub fn new(window_manager_state: M::State) -> Self {
         Self {
-            manager_state: RefCell::new(DecoOneState::default()),
+            manager_state: RefCell::new(window_manager_state),
             max_handle: Default::default(),
             windows: Default::default(),
             closed_windows: Default::default(),
@@ -159,12 +166,14 @@ where
         self.manager_state
             .borrow_mut()
             .set_window_area(handle, area);
-        self.manager_state.borrow_mut().set_base_area(handle, area);
+        self.manager_state
+            .borrow_mut()
+            .set_window_base_area(handle, area);
     }
 
     /// This window has the focus?
-    pub fn is_window_focused(&self, handle: WinHandle) -> bool {
-        self.manager_state.borrow().is_window_focused(handle)
+    pub fn is_focused_window(&self, handle: WinHandle) -> bool {
+        self.manager_state.borrow().is_focused_window(handle)
     }
 
     /// Return the focused window handle.
@@ -173,22 +182,18 @@ where
     }
 
     /// Set the focused window.
-    pub fn set_focused_window(&self, handle: WinHandle) -> bool {
-        self.manager_state.borrow_mut().set_focused_window(handle)
+    pub fn focus_window(&self, handle: WinHandle) -> bool {
+        self.manager_state.borrow_mut().focus_window(handle)
     }
 
     /// List of all windows in rendering order.
     pub fn windows(&self) -> Vec<WinHandle> {
-        self.manager_state.borrow().windows()
+        self.manager_state.borrow().windows().into()
     }
 
     /// Window at the given __screen__ coordinates.
     pub fn window_at(&self, pos: Position) -> Option<WinHandle> {
-        let manager_state = self.manager_state.borrow();
-        let Some(pos) = manager_state.screen_to_win(pos) else {
-            return None;
-        };
-        manager_state.window_at(pos)
+        self.manager_state.borrow().window_at(pos)
     }
 
     /// Open a new window.
@@ -201,7 +206,9 @@ where
         self.manager_state
             .borrow_mut()
             .set_window_area(handle, area);
-        self.manager_state.borrow_mut().set_base_area(handle, area);
+        self.manager_state
+            .borrow_mut()
+            .set_window_base_area(handle, area);
         self.windows.borrow_mut().insert(handle, window);
 
         handle
@@ -228,9 +235,10 @@ where
     }
 }
 
-impl<T> WindowsState<T>
+impl<T, M> WindowsState<T, M>
 where
     T: WinState + ?Sized + 'static,
+    M: WindowManager,
 {
     #[inline]
     fn new_handle(&self) -> WinHandle {
@@ -239,28 +247,11 @@ where
     }
 }
 
-impl<T> WindowsState<T>
+impl<T, M> WindowsState<T, M>
 where
     T: WinState + ?Sized + 'static,
+    M: WindowManager,
 {
-    ///
-    /// Convert the mouse-event to window coordinates, if possible.
-    ///
-    pub fn relocate_mouse_event(&self, m: &MouseEvent) -> Option<MouseEvent> {
-        if let Some(pos) = self
-            .manager_state
-            .borrow()
-            .screen_to_win(Position::new(m.column, m.row))
-        {
-            let mut mm = m.clone();
-            mm.column = pos.x;
-            mm.row = pos.y;
-            Some(mm)
-        } else {
-            None
-        }
-    }
-
     /// Run an operation for a &mut Window
     ///
     /// Extracts the window for the duration and restores it

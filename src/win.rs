@@ -1,4 +1,5 @@
 use crate::win_flags::WinFlags;
+use crate::window_manager::{relocate_event, WindowManager};
 use crate::windows::WindowsState;
 use crate::WinHandle;
 use rat_event::{HandleEvent, Outcome, Regular};
@@ -6,6 +7,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use std::any::{Any, TypeId};
 use std::fmt::Debug;
+use std::ops::Deref;
 
 ///
 /// Trait for rendering the contents of a widget.
@@ -57,23 +59,19 @@ impl dyn WinState {
     }
 }
 
-impl HandleEvent<crossterm::event::Event, Regular, Outcome> for &WindowsState<dyn WinState> {
+impl<M> HandleEvent<crossterm::event::Event, Regular, Outcome> for &WindowsState<dyn WinState, M>
+where
+    M: WindowManager,
+    M::State: HandleEvent<crossterm::event::Event, Regular, Outcome>,
+{
     fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> Outcome {
-        use crossterm::event::Event;
-        // forward to window-manager
-        let r = match event {
-            Event::Mouse(m) => {
-                // can only convert a subset of the mouse-events.
-                if let Some(m_relocated) = self.relocate_mouse_event(m) {
-                    self.manager_state
-                        .borrow_mut()
-                        .handle(&Event::Mouse(m_relocated), Regular)
-                } else {
-                    Outcome::Continue
-                }
-            }
-            event => self.manager_state.borrow_mut().handle(event, Regular),
+        let Some(event) = relocate_event(self.manager_state.borrow().deref(), event) else {
+            return Outcome::Continue;
         };
-        r
+
+        // forward to window-manager
+        self.manager_state
+            .borrow_mut()
+            .handle(event.as_ref(), Regular)
     }
 }

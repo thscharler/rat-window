@@ -2,6 +2,7 @@ use crate::{WinFlags, WinHandle};
 use rat_focus::FocusFlag;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
+use std::borrow::Cow;
 
 pub trait WindowManager {
     type State: WindowManagerState;
@@ -117,8 +118,39 @@ pub trait WindowManagerState {
 
     /// Return a list of the window handles
     /// in rendering order.
-    fn windows(&self) -> &[WinHandle];
+    fn windows(&self) -> Vec<WinHandle>;
 
     /// Move a window to front.
     fn window_to_front(&mut self, handle: WinHandle) -> bool;
+
+    /// Window at the given __screen__ position.
+    fn window_at(&self, pos: Position) -> Option<WinHandle>;
+
+    /// Translate screen coordinates to window coordinates.
+    fn screen_to_win(&self, pos: Position) -> Option<Position>;
+
+    /// Translate window coordinates to screen coordinates
+    fn win_to_screen(&self, pos: Position) -> Option<Position>;
+}
+
+/// Relocate mouse events to window coordinates.
+pub fn relocate_event<'a, 'b>(
+    window_manager: &'a dyn WindowManagerState,
+    event: &'b crossterm::event::Event,
+) -> Option<Cow<'b, crossterm::event::Event>> {
+    match event {
+        crossterm::event::Event::Mouse(mouse_event) => {
+            if let Some(pos) =
+                window_manager.screen_to_win(Position::new(mouse_event.column, mouse_event.row))
+            {
+                let mut mm = mouse_event.clone();
+                mm.column = pos.x;
+                mm.row = pos.y;
+                Some(Cow::Owned(crossterm::event::Event::Mouse(mm)))
+            } else {
+                None
+            }
+        }
+        e => Some(Cow::Borrowed(e)),
+    }
 }
