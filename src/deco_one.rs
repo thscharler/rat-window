@@ -1,7 +1,6 @@
 use crate::util::{copy_buffer, revert_style};
 use crate::win_flags::WinFlags;
 use crate::windows::WinHandle;
-use log::debug;
 use rat_event::util::MouseFlags;
 use rat_event::{ct_event, ConsumedEvent, HandleEvent, Outcome, Regular};
 use rat_focus::{FocusFlag, HasFocus};
@@ -544,7 +543,7 @@ impl DecoOneState {
         // '1': left
         self.snap_areas.push((
             vec![Rect::new(
-                area_win.x,
+                area_win.x + 1,
                 area_win.y + h_clip,
                 1,
                 area_win.height - 2 * h_clip,
@@ -554,7 +553,7 @@ impl DecoOneState {
         // '2': right
         self.snap_areas.push((
             vec![Rect::new(
-                (area_win.x + area_win.width).saturating_sub(1),
+                (area_win.x + area_win.width).saturating_sub(2),
                 area_win.y + h_clip,
                 1,
                 area_win.height - 2 * h_clip,
@@ -680,7 +679,7 @@ impl DecoOneState {
         // 'a': alt left
         self.snap_areas.push((
             vec![Rect::new(
-                area_win.x + 1,
+                area_win.x + 2,
                 area_win.y + h_clip,
                 1,
                 area_win.height - 2 * h_clip,
@@ -692,10 +691,25 @@ impl DecoOneState {
                 area_win.height,
             ),
         ));
-        // 'b': alt right
+        // 'b': alt left 2
         self.snap_areas.push((
             vec![Rect::new(
-                (area_win.x + area_win.width).saturating_sub(2),
+                area_win.x,
+                area_win.y + h_clip,
+                1,
+                area_win.height - 2 * h_clip,
+            )],
+            Rect::new(
+                area_win.x,
+                area_win.y,
+                area_win.width * 4 / 10,
+                area_win.height,
+            ),
+        ));
+        // 'c': alt right
+        self.snap_areas.push((
+            vec![Rect::new(
+                (area_win.x + area_win.width).saturating_sub(3),
                 area_win.y + h_clip,
                 1,
                 area_win.height - 2 * h_clip,
@@ -707,7 +721,22 @@ impl DecoOneState {
                 area_win.height,
             ),
         ));
-        // 'c' or '0'==last: full area
+        // 'd': alt right 2
+        self.snap_areas.push((
+            vec![Rect::new(
+                (area_win.x + area_win.width).saturating_sub(1),
+                area_win.y + h_clip,
+                1,
+                area_win.height - 2 * h_clip,
+            )],
+            Rect::new(
+                area_win.x + area_win.width * 6 / 10,
+                area_win.y,
+                area_win.width - area_win.width * 6 / 10,
+                area_win.height,
+            ),
+        ));
+        // 'e' or '0'==last: full area
         self.snap_areas.push((Vec::default(), self.area_win));
     }
 
