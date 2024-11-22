@@ -159,7 +159,7 @@ where
         self.manager_state
             .borrow_mut()
             .set_window_area(handle, area);
-        self.manager_state.borrow_mut().set_base_size(handle, area);
+        self.manager_state.borrow_mut().set_base_area(handle, area);
     }
 
     /// This window has the focus?
@@ -197,11 +197,11 @@ where
 
         window.borrow_mut().set_handle(handle);
 
-        self.manager_state.borrow_mut().insert(handle);
+        self.manager_state.borrow_mut().insert_window(handle);
         self.manager_state
             .borrow_mut()
             .set_window_area(handle, area);
-        self.manager_state.borrow_mut().set_base_size(handle, area);
+        self.manager_state.borrow_mut().set_base_area(handle, area);
         self.windows.borrow_mut().insert(handle, window);
 
         handle
@@ -213,7 +213,7 @@ where
             // temporarily removed from the window list.
             self.closed_windows.borrow_mut().insert(handle);
         }
-        self.manager_state.borrow_mut().remove(handle);
+        self.manager_state.borrow_mut().remove_window(handle);
         true
     }
 

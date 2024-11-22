@@ -1,8 +1,10 @@
 mod deco_one;
+mod deco_two;
 mod util;
 mod win;
 mod win_ct;
 mod win_flags;
+mod window_manager;
 mod windows;
 
 pub use deco_one::*;
