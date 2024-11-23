@@ -21,7 +21,7 @@ where
     M::State: HandleEvent<crossterm::event::Event, Regular, Outcome>,
 {
     fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> Outcome {
-        let Some(event) = relocate_event(self.manager_state.borrow().deref(), event) else {
+        let Some(relocated) = relocate_event(self.manager_state.borrow().deref(), event) else {
             return Outcome::Continue;
         };
 
@@ -29,14 +29,14 @@ where
         let r = self
             .manager_state
             .borrow_mut()
-            .handle(event.as_ref(), Regular);
+            .handle(relocated.as_ref(), Regular);
 
         let r = r.or_else(|| {
             // forward to all windows
             'f: {
                 for handle in self.windows().into_iter().rev() {
                     let r = self.run_for_window(handle, &mut |window| {
-                        window.handle(event.as_ref(), Regular)
+                        window.handle(relocated.as_ref(), Regular)
                     });
                     if r.is_consumed() {
                         break 'f r;

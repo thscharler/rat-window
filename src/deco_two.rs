@@ -565,11 +565,11 @@ impl WindowManagerState for DecoTwoState {
         }
     }
 
-    /// Window at the given __screen__ position.
+    /// Window at the given __window__ position.
     fn window_at(&self, pos: Position) -> Option<WinHandle> {
-        let Some(pos) = self.screen_to_win(pos) else {
-            return None;
-        };
+        // let Some(pos) = self.screen_to_win(pos) else {
+        //     return None;
+        // };
         for handle in self.order.iter().rev().copied() {
             let area = self.window_area(handle);
             if area.contains(pos) {

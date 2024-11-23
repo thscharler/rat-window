@@ -4,9 +4,9 @@ use crate::mini_salsa::theme::THEME;
 use crate::mini_salsa::{run_ui, setup_logging, MiniSalsaState};
 use rat_event::{ct_event, ConsumedEvent, HandleEvent, Outcome, Regular};
 use rat_focus::{FocusBuilder, FocusContainer, HasFocus};
-use rat_window::{DecoOne, DecoTwo, DecoTwoState, WinCtState, Windows, WindowsState};
+use rat_window::{DecoTwo, DecoTwoState, WinCtState, Windows, WindowsState};
 use ratatui::layout::{Alignment, Constraint, Layout, Position, Rect};
-use ratatui::widgets::{Block, BorderType, Borders, StatefulWidget};
+use ratatui::widgets::{Block, BorderType, StatefulWidget};
 use ratatui::Frame;
 use std::cmp::max;
 
@@ -65,7 +65,7 @@ fn repaint_windows(
             .block(
                 Block::bordered()
                     .border_type(BorderType::Thick)
-                    .borders(Borders::TOP)
+                    // .borders(Borders::TOP)
                     .border_style(THEME.black(1)),
             )
             .title_style(THEME.black(1))
