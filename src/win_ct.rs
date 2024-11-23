@@ -1,7 +1,10 @@
 use crate::window_manager::{relocate_event, WindowManager};
-use crate::{WinState, WindowsState};
+use crate::{WinState, WinWidget, WindowsState};
 use rat_event::{ConsumedEvent, HandleEvent, Outcome, Regular};
 use std::ops::Deref;
+
+/// Trait for a window with event handling.
+pub trait WinCtWidget: WinWidget {}
 
 ///
 /// Trait for a window with event handling.
@@ -15,8 +18,10 @@ where
 {
 }
 
-impl<M> HandleEvent<crossterm::event::Event, Regular, Outcome> for &WindowsState<dyn WinCtState, M>
+impl<T, M> HandleEvent<crossterm::event::Event, Regular, Outcome>
+    for &WindowsState<T, dyn WinCtState, M>
 where
+    T: WinWidget + ?Sized + 'static,
     M: WindowManager,
     M::State: HandleEvent<crossterm::event::Event, Regular, Outcome>,
 {

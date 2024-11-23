@@ -1,10 +1,10 @@
-use crate::max_win::MaxWinState;
-use crate::min_win::MinWinState;
+use crate::max_win::{MaxWin, MaxWinState};
+use crate::min_win::{MinWin, MinWinState};
 use crate::mini_salsa::theme::THEME;
 use crate::mini_salsa::{run_ui, setup_logging, MiniSalsaState};
 use rat_event::{ct_event, ConsumedEvent, HandleEvent, Outcome, Regular};
 use rat_focus::{FocusBuilder, FocusContainer, HasFocus};
-use rat_window::{DecoOne, DecoOneState, WinCtState, Windows, WindowsState};
+use rat_window::{DecoOne, DecoOneState, WinCtState, WinCtWidget, Windows, WindowsState};
 use ratatui::layout::{Alignment, Constraint, Layout, Position, Rect};
 use ratatui::widgets::{Block, BorderType, StatefulWidget};
 use ratatui::Frame;
@@ -34,7 +34,7 @@ fn main() -> Result<(), anyhow::Error> {
 struct Data {}
 
 struct State {
-    win: WindowsState<dyn WinCtState, DecoOne>,
+    win: WindowsState<dyn WinCtWidget, dyn WinCtState, DecoOne>,
 }
 
 fn repaint_windows(
@@ -96,18 +96,21 @@ fn handle_windows(
             let c = (rand::random::<u8>() % 26 + b'a') as char;
             let cstr = c.to_string();
 
-            let mut minwin = MinWinState::new();
-            minwin.set_fill(cstr);
+            let mut minwin = MinWin;
+            let mut minwin_state = MinWinState::new();
+            minwin_state.set_fill(cstr);
 
-            state
-                .win
-                .open_window(minwin.boxed(), Rect::new(10, 10, 15, 20));
+            state.win.open_window(
+                (minwin.into(), minwin_state.into()),
+                Rect::new(10, 10, 15, 20),
+            );
             Outcome::Changed
         }
         ct_event!(keycode press F(3)) => {
-            state
-                .win
-                .open_window(MaxWinState::new().boxed(), Rect::new(10, 10, 20, 15));
+            state.win.open_window(
+                (MaxWin.into(), MaxWinState::new().into()),
+                Rect::new(10, 10, 20, 15),
+            );
             Outcome::Changed
         }
         _ => Outcome::Continue,
@@ -130,7 +133,7 @@ pub mod min_win {
     use crate::mini_salsa::theme::THEME;
     use crossterm::event::Event;
     use rat_event::{ct_event, HandleEvent, Outcome, Regular};
-    use rat_window::{WinCtState, WinFlags, WinHandle, WinState, WinWidget};
+    use rat_window::{WinCtState, WinCtWidget, WinFlags, WinHandle, WinState, WinWidget};
     use ratatui::buffer::Buffer;
     use ratatui::layout::{Position, Rect};
     use std::cell::RefCell;
@@ -138,6 +141,14 @@ pub mod min_win {
 
     #[derive(Debug)]
     pub struct MinWin;
+
+    impl WinCtWidget for MinWin {}
+
+    impl From<MinWin> for Rc<RefCell<dyn WinCtWidget>> {
+        fn from(value: MinWin) -> Self {
+            Rc::new(RefCell::new(value))
+        }
+    }
 
     #[derive(Debug, Default)]
     pub struct MinWinState {
@@ -155,9 +166,11 @@ pub mod min_win {
         pub fn set_fill(&mut self, fill: String) {
             self.fill = fill;
         }
+    }
 
-        pub fn boxed(self) -> Rc<RefCell<dyn WinCtState>> {
-            Rc::new(RefCell::new(self))
+    impl From<MinWinState> for Rc<RefCell<dyn WinCtState>> {
+        fn from(value: MinWinState) -> Self {
+            Rc::new(RefCell::new(value))
         }
     }
 
@@ -188,10 +201,6 @@ pub mod min_win {
         fn as_dyn(&mut self) -> &mut dyn WinState {
             self
         }
-
-        fn get_widget(&self) -> Box<dyn WinWidget> {
-            Box::new(MinWin)
-        }
     }
 
     impl WinCtState for MinWinState {}
@@ -210,7 +219,7 @@ pub mod max_win {
     use crate::mini_salsa::theme::THEME;
     use crossterm::event::Event;
     use rat_event::{ct_event, HandleEvent, Outcome, Regular};
-    use rat_window::{WinCtState, WinFlags, WinHandle, WinState, WinWidget};
+    use rat_window::{WinCtState, WinCtWidget, WinFlags, WinHandle, WinState, WinWidget};
     use ratatui::buffer::Buffer;
     use ratatui::layout::Rect;
     use ratatui::prelude::Widget;
@@ -220,6 +229,14 @@ pub mod max_win {
 
     #[derive(Debug)]
     pub struct MaxWin;
+
+    impl WinCtWidget for MaxWin {}
+
+    impl From<MaxWin> for Rc<RefCell<dyn WinCtWidget>> {
+        fn from(value: MaxWin) -> Self {
+            Rc::new(RefCell::new(value))
+        }
+    }
 
     #[derive(Debug, Default)]
     pub struct MaxWinState {
@@ -237,10 +254,6 @@ pub mod max_win {
         pub fn message(mut self, message: String) -> Self {
             self.msg = message;
             self
-        }
-
-        pub fn boxed(self) -> Rc<RefCell<dyn WinCtState>> {
-            Rc::new(RefCell::new(self))
         }
     }
 
@@ -265,9 +278,11 @@ pub mod max_win {
         fn as_dyn(&mut self) -> &mut dyn WinState {
             self
         }
+    }
 
-        fn get_widget(&self) -> Box<dyn WinWidget> {
-            Box::new(MaxWin)
+    impl From<MaxWinState> for Rc<RefCell<dyn WinCtState>> {
+        fn from(value: MaxWinState) -> Self {
+            Rc::new(RefCell::new(value))
         }
     }
 

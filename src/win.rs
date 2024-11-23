@@ -32,8 +32,8 @@ pub trait WinState: Any + Debug {
     /// Return self as dyn WinState.
     fn as_dyn(&mut self) -> &mut dyn WinState;
 
-    /// Create the widget that renders this window.
-    fn get_widget(&self) -> Box<dyn WinWidget>;
+    // Create the widget that renders this window.
+    // fn get_widget(&self) -> Box<dyn WinWidget>;
     // fn get_widget(&self) -> Box<dyn StatefulWidgetRef<State = dyn WinState>>;
 }
 
@@ -59,8 +59,10 @@ impl dyn WinState {
     }
 }
 
-impl<M> HandleEvent<crossterm::event::Event, Regular, Outcome> for &WindowsState<dyn WinState, M>
+impl<T, M> HandleEvent<crossterm::event::Event, Regular, Outcome>
+    for &WindowsState<T, dyn WinState, M>
 where
+    T: WinWidget + ?Sized + 'static,
     M: WindowManager,
     M::State: HandleEvent<crossterm::event::Event, Regular, Outcome>,
 {
