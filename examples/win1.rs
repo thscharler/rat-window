@@ -4,7 +4,7 @@ use crate::mini_salsa::theme::THEME;
 use crate::mini_salsa::{run_ui, setup_logging, MiniSalsaState};
 use rat_event::{ct_event, ConsumedEvent, HandleEvent, Outcome, Regular};
 use rat_focus::{FocusBuilder, FocusContainer, HasFocus};
-use rat_window::{DecoTwo, DecoTwoState, WinCtState, Windows, WindowsState};
+use rat_window::{DecoOne, DecoOneState, WinCtState, Windows, WindowsState};
 use ratatui::layout::{Alignment, Constraint, Layout, Position, Rect};
 use ratatui::widgets::{Block, BorderType, StatefulWidget};
 use ratatui::Frame;
@@ -18,7 +18,7 @@ fn main() -> Result<(), anyhow::Error> {
     let mut data = Data {};
 
     let mut state = State {
-        win: WindowsState::new(DecoTwoState::new()),
+        win: WindowsState::new(DecoOneState::new()),
     };
     state.win.focus().set(true);
 
@@ -34,7 +34,7 @@ fn main() -> Result<(), anyhow::Error> {
 struct Data {}
 
 struct State {
-    win: WindowsState<dyn WinCtState, DecoTwo>,
+    win: WindowsState<dyn WinCtState, DecoOne>,
 }
 
 fn repaint_windows(
@@ -61,7 +61,7 @@ fn repaint_windows(
     frame.buffer_mut().set_style(hlayout[1], THEME.gray(0));
 
     Windows::new(
-        DecoTwo::new()
+        DecoOne::new()
             .block(
                 Block::bordered()
                     .border_type(BorderType::Thick)
