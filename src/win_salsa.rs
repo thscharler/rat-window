@@ -1,16 +1,20 @@
 use crate::win_base::WinBaseState;
-use crate::{relocate_event, WinFlags, WindowManager, WindowManagerState, Windows, WindowsState};
+use crate::{
+    relocate_event, DecoOne, WinFlags, WindowManager, WindowManagerState, Windows, WindowsState,
+};
 use rat_event::{ConsumedEvent, HandleEvent, Outcome, Regular};
 use rat_salsa::timer::TimeOut;
 use rat_salsa::{AppContext, AppState, AppWidget, Control, RenderContext};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use std::any::Any;
-use std::ops::Deref;
+use std::cell::RefMut;
+use std::cmp::max;
+use std::ops::{Deref, DerefMut};
 
-pub trait WinSalsaState<Global, Message, Error>:
-    WinBaseState + AppState<Global, Message, Error> + Any
+pub trait WinSalsaState<Global, Message, Error>: WinBaseState + Any
 where
+    Self: AppState<Global, Message, Error>,
     Global: 'static,
     Message: 'static + Send,
     Error: 'static + Send,
@@ -23,28 +27,17 @@ where
     fn as_dyn(&mut self) -> &mut dyn WinSalsaState<Global, Message, Error>;
 }
 
-impl<'a, Global, Message, Error, M> AppWidget<Global, Message, Error>
-    for Windows<
-        'a,
-        dyn AppWidget<Global, Message, Error, State = dyn WinSalsaState<Global, Message, Error>>,
-        dyn WinSalsaState<Global, Message, Error>,
-        M,
-    >
+impl<'a, Global, Message, Error> AppWidget<Global, Message, Error>
+    for Windows<'a, dyn WinSalsaState<Global, Message, Error>, DecoOne>
 where
-    M: WindowManager,
     Global: 'static,
     Message: 'static + Send,
     Error: 'static + Send,
 {
     type State = WindowsState<
-        dyn WinSalsaWidget<
-            Global,
-            Message,
-            Error,
-            State = dyn WinSalsaState<Global, Message, Error>,
-        >,
+        dyn AppWidget<Global, Message, Error, State = dyn WinSalsaState<Global, Message, Error>>,
         dyn WinSalsaState<Global, Message, Error>,
-        M,
+        DecoOne,
     >;
 
     fn render(
@@ -54,54 +47,67 @@ where
         state: &mut Self::State,
         ctx: &mut RenderContext<'_, Global>,
     ) -> Result<(), Error> {
-        let mut manager_state = state.manager_state.borrow_mut();
+        state.rc.manager.borrow_mut().set_offset(self.offset);
+        state.rc.manager.borrow_mut().set_area(area);
 
-        manager_state.set_offset(self.offset);
-        manager_state.set_area(area);
+        let handles = state.rc.manager.borrow().handles();
+        for handle in handles {
+            state.run_for_window(handle, &mut |window, window_state| {
+                self.manager.render_init_window(
+                    handle,
+                    window_state.get_flags(),
+                    &mut state.rc.manager.borrow_mut(),
+                );
 
-        for handle in manager_state.windows().iter().copied() {
-            let (window, window_state) = state.window(handle);
+                let (widget_area, mut tmp_buf) = self
+                    .manager
+                    .render_init_buffer(handle, &mut state.rc.manager.borrow_mut());
 
-            let mut window = window.borrow();
-            let mut window_state = window_state.borrow_mut();
+                // window content
+                window.render(widget_area, &mut tmp_buf, window_state, ctx)?;
 
-            self.manager
-                .render_init_window(handle, window_state.get_flags(), &mut manager_state);
+                // window decorations
+                self.manager.render_window_frame(
+                    handle,
+                    &mut tmp_buf,
+                    &mut state.rc.manager.borrow_mut(),
+                );
 
-            let (widget_area, mut tmp_buf) =
-                self.manager.render_init_buffer(handle, &mut manager_state);
+                // copy
+                self.manager.render_copy_buffer(
+                    &mut tmp_buf,
+                    area,
+                    buf,
+                    &mut state.rc.manager.borrow_mut(),
+                );
 
-            // window content
-            window.render(widget_area, &mut tmp_buf, window_state.as_dyn(), ctx)?;
+                // keep allocation
+                self.manager
+                    .render_free_buffer(tmp_buf, &mut state.rc.manager.borrow_mut());
 
-            // window decorations
-            self.manager
-                .render_window_frame(handle, &mut tmp_buf, &mut manager_state);
-
-            // copy
-            self.manager
-                .render_copy_buffer(&mut tmp_buf, area, buf, &mut manager_state);
-
-            // keep allocation
-            self.manager.render_free_buffer(tmp_buf, &mut manager_state);
+                Ok(())
+            })?;
         }
 
         Ok(())
     }
 }
 
-impl<Global, Message, Error, T, M> AppState<Global, Message, Error>
-    for WindowsState<T, dyn WinSalsaState<Global, Message, Error>, M>
+impl<Global, Message, Error, M> AppState<Global, Message, Error>
+    for WindowsState<
+        dyn AppWidget<Global, Message, Error, State = dyn WinSalsaState<Global, Message, Error>>,
+        dyn WinSalsaState<Global, Message, Error>,
+        M,
+    >
 where
-    Message: 'static + Send,
-    Error: 'static + Send,
-    T: WinSalsaWidget<Global, Message, Error> + ?Sized + 'static,
     M: WindowManager,
     M::State: HandleEvent<crossterm::event::Event, Regular, Outcome>,
+    Message: 'static + Send,
+    Error: 'static + Send,
 {
     fn init(&mut self, ctx: &mut AppContext<'_, Global, Message, Error>) -> Result<(), Error> {
-        for handle in self.windows().into_iter().rev() {
-            self.run_for_window(handle, &mut |window| window.init(ctx))?;
+        for handle in self.handles().into_iter().rev() {
+            self.run_for_window(handle, &mut |_window, window_state| window_state.init(ctx))?;
         }
         Ok(())
     }
@@ -111,8 +117,10 @@ where
         event: &TimeOut,
         ctx: &mut AppContext<'_, Global, Message, Error>,
     ) -> Result<Control<Message>, Error> {
-        for handle in self.windows().into_iter().rev() {
-            let r = self.run_for_window(handle, &mut |window| window.timer(event, ctx));
+        for handle in self.handles().into_iter().rev() {
+            let r = self.run_for_window(handle, &mut |_window, window_state| {
+                window_state.timer(event, ctx)
+            });
             if r.is_consumed() {
                 return r;
             }
@@ -125,33 +133,30 @@ where
         event: &crossterm::event::Event,
         ctx: &mut AppContext<'_, Global, Message, Error>,
     ) -> Result<Control<Message>, Error> {
-        let Some(relocated) = relocate_event(self.manager_state.borrow().deref(), event) else {
+        let Some(relocated) = relocate_event(self.rc.manager.borrow().deref(), event) else {
             return Ok(Control::Continue);
         };
+        let relocated = relocated.as_ref();
 
         // forward to window-manager
-        let r: Control<Message> = self
-            .manager_state
-            .borrow_mut()
-            .handle(relocated.as_ref(), Regular)
-            .into();
+        let mut manager: RefMut<'_, M::State> = self.rc.manager.borrow_mut();
+        let manager: &mut M::State = manager.deref_mut();
+        let r0 = manager.handle(relocated, Regular);
 
-        let r = r.or_else_try(|| {
-            // forward to all windows
-            'f: {
-                for handle in self.windows().into_iter().rev() {
-                    let r = self.run_for_window(handle, &mut |window| {
-                        window.crossterm(relocated.as_ref(), ctx)
-                    })?;
-                    if r.is_consumed() {
-                        break 'f Ok(r);
-                    }
+        // forward to all windows
+        let r1 = 'f: {
+            for handle in self.handles().into_iter().rev() {
+                let r = self.run_for_window(handle, &mut |_window, window_state| {
+                    window_state.crossterm(relocated, ctx)
+                })?;
+                if r.is_consumed() {
+                    break 'f Ok(r);
                 }
-                Ok(Control::Continue)
             }
-        })?;
+            Ok(Control::Continue)
+        }?;
 
-        Ok(r)
+        Ok(max(r1, r0.into()))
     }
 
     fn message(
@@ -159,8 +164,10 @@ where
         event: &mut Message,
         ctx: &mut AppContext<'_, Global, Message, Error>,
     ) -> Result<Control<Message>, Error> {
-        for handle in self.windows().into_iter().rev() {
-            let r = self.run_for_window(handle, &mut |window| window.message(event, ctx));
+        for handle in self.handles().into_iter().rev() {
+            let r = self.run_for_window(handle, &mut |_window, window_state| {
+                window_state.message(event, ctx)
+            });
             if r.is_consumed() {
                 return r;
             }

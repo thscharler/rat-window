@@ -4,7 +4,7 @@ mod win;
 mod win_base;
 mod win_ct;
 mod win_flags;
-// mod win_salsa;
+mod win_salsa;
 mod window_manager;
 mod windows;
 
