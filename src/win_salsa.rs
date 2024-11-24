@@ -7,23 +7,24 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use std::any::Any;
 use std::cmp::max;
+use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 
-pub trait WinSalsaWidget<Global, Message, Error>: AppWidget<Global, Message, Error>
+pub trait WinSalsaWidget<Global, Message, Error>:
+    AppWidget<Global, Message, Error, State = dyn WinSalsaState<Global, Message, Error>>
 where
-    Self::State: WinSalsaState<Global, Message, Error>,
     Global: 'static,
-    Message: 'static + Send,
-    Error: 'static + Send,
+    Message: 'static + Send + Debug,
+    Error: 'static + Send + Debug,
 {
 }
 
-pub trait WinSalsaState<Global, Message, Error>: WinBaseState + Any
+pub trait WinSalsaState<Global, Message, Error>: WinBaseState + Any + Debug
 where
     Self: AppState<Global, Message, Error>,
     Global: 'static,
-    Message: 'static + Send,
-    Error: 'static + Send,
+    Message: 'static + Send + Debug,
+    Error: 'static + Send + Debug,
 {
 }
 

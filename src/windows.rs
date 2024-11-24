@@ -5,6 +5,7 @@ use rat_focus::{FocusFlag, HasFocus, Navigation};
 use ratatui::layout::{Position, Rect};
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::rc::Rc;
 
@@ -45,6 +46,20 @@ where
     pub rc: Rc<WindowsStateRc<T, S, M>>,
 }
 
+impl<T, S, M> Debug for WindowsState<T, S, M>
+where
+    T: ?Sized + 'static + Debug,
+    S: ?Sized + 'static + Debug,
+    M: WindowManager + Debug,
+    M::State: Debug,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WindowsState")
+            .field("rc", self.rc.as_ref())
+            .finish()
+    }
+}
+
 impl<T, S, M> Clone for WindowsState<T, S, M>
 where
     T: ?Sized + 'static,
@@ -58,6 +73,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct WindowsStateRc<T, S, M = DecoOne>
 where
     T: ?Sized + 'static,

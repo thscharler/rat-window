@@ -7,6 +7,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::prelude::StatefulWidget;
 use std::any::{Any, TypeId};
+use std::fmt::Debug;
 use std::ops::Deref;
 
 ///
@@ -14,14 +15,14 @@ use std::ops::Deref;
 ///
 /// TODO: change to StatefulWidgetRef once #1505 is released.
 ///
-pub trait WinWidget {
+pub trait WinWidget: Debug {
     fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut dyn WinState);
 }
 
 ///
 /// State for a window.
 ///
-pub trait WinState: WinBaseState + Any {}
+pub trait WinState: WinBaseState + Any + Debug {}
 
 impl dyn WinState {
     /// down cast Any style.
@@ -47,7 +48,8 @@ impl dyn WinState {
 
 impl<'a, M> StatefulWidget for Windows<'a, dyn WinState, M>
 where
-    M: WindowManager + 'a,
+    M: WindowManager + 'a + Debug,
+    M::State: Debug,
 {
     type State = WindowsState<dyn WinWidget, dyn WinState, M>;
 
@@ -102,9 +104,9 @@ where
 impl<T, M> HandleEvent<crossterm::event::Event, Regular, Outcome>
     for WindowsState<T, dyn WinState, M>
 where
-    T: WinWidget + ?Sized + 'static,
-    M: WindowManager,
-    M::State: HandleEvent<crossterm::event::Event, Regular, Outcome>,
+    T: WinWidget + ?Sized + 'static + Debug,
+    M: WindowManager + Debug,
+    M::State: HandleEvent<crossterm::event::Event, Regular, Outcome> + Debug,
 {
     fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> Outcome {
         let Some(event) = relocate_event(self.rc.manager.borrow().deref(), event) else {

@@ -6,10 +6,11 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::prelude::StatefulWidget;
 use std::any::{Any, TypeId};
+use std::fmt::Debug;
 use std::ops::Deref;
 
 /// Trait for a window with event handling.
-pub trait WinCtWidget {
+pub trait WinCtWidget: Debug {
     fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut dyn WinCtState);
 }
 
@@ -18,7 +19,7 @@ pub trait WinCtWidget {
 ///
 /// Reuses [WinState] and adds event handling.
 ///
-pub trait WinCtState: WinBaseState + Any
+pub trait WinCtState: WinBaseState + Any + Debug
 where
     Self: HandleEvent<crossterm::event::Event, Regular, Outcome>,
 {
@@ -48,7 +49,8 @@ impl dyn WinCtState {
 
 impl<'a, M> StatefulWidget for Windows<'a, dyn WinCtState, M>
 where
-    M: WindowManager + 'a,
+    M: WindowManager + 'a + Debug,
+    M::State: Debug,
 {
     type State = WindowsState<dyn WinCtWidget, dyn WinCtState, M>;
 
@@ -103,9 +105,9 @@ where
 impl<T, M> HandleEvent<crossterm::event::Event, Regular, Outcome>
     for WindowsState<T, dyn WinCtState, M>
 where
-    T: WinCtWidget + ?Sized + 'static,
-    M: WindowManager,
-    M::State: HandleEvent<crossterm::event::Event, Regular, Outcome>,
+    T: WinCtWidget + ?Sized + 'static + Debug,
+    M: WindowManager + Debug,
+    M::State: HandleEvent<crossterm::event::Event, Regular, Outcome> + Debug,
 {
     fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> Outcome {
         let Some(relocated) = relocate_event(self.rc.manager.borrow().deref(), event) else {

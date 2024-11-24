@@ -14,6 +14,7 @@ pub use win::*;
 pub use win_base::*;
 pub use win_ct::*;
 pub use win_flags::*;
+pub use win_salsa::*;
 pub use window_manager::*;
 pub use windows::*;
 

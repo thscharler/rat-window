@@ -229,6 +229,7 @@ pub mod max_win {
     #[derive(Debug)]
     pub struct MaxWin;
 
+    #[derive(Debug)]
     pub struct MaxWinState {
         msg: String,
 
