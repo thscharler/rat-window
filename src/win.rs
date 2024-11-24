@@ -1,12 +1,13 @@
+use crate::win_base::WinBaseState;
 use crate::win_flags::WinFlags;
 use crate::window_manager::{relocate_event, WindowManager};
 use crate::windows::WindowsState;
-use crate::WinHandle;
+use crate::{WindowManagerState, Windows};
 use rat_event::{HandleEvent, Outcome, Regular};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use ratatui::prelude::StatefulWidget;
 use std::any::{Any, TypeId};
-use std::fmt::Debug;
 use std::ops::Deref;
 
 ///
@@ -21,20 +22,13 @@ pub trait WinWidget {
 ///
 /// State for a window.
 ///
-pub trait WinState: Any + Debug {
-    /// Set the handle used for this window.
-    fn set_handle(&mut self, handle: WinHandle);
-
+pub trait WinState: WinBaseState + Any {
     /// Get a copy of the windows flags governing general
     /// behaviour of the window.
     fn get_flags(&self) -> WinFlags;
 
     /// Return self as dyn WinState.
     fn as_dyn(&mut self) -> &mut dyn WinState;
-
-    // Create the widget that renders this window.
-    // fn get_widget(&self) -> Box<dyn WinWidget>;
-    // fn get_widget(&self) -> Box<dyn StatefulWidgetRef<State = dyn WinState>>;
 }
 
 impl dyn WinState {
@@ -59,8 +53,54 @@ impl dyn WinState {
     }
 }
 
+impl<'a, M> StatefulWidget for Windows<'a, dyn WinState, M>
+where
+    M: WindowManager + 'a,
+{
+    type State = &'a WindowsState<dyn WinWidget, dyn WinState, M>;
+
+    fn render(
+        self,
+        area: Rect,
+        buf: &mut Buffer,
+        state: &mut &'a WindowsState<dyn WinWidget, dyn WinState, M>,
+    ) {
+        let mut manager_state = state.manager_state.borrow_mut();
+
+        manager_state.set_offset(self.offset);
+        manager_state.set_area(area);
+
+        for handle in manager_state.windows().iter().copied() {
+            let (window, window_state) = state.window(handle);
+
+            let window = window.borrow();
+            let mut window_state = window_state.borrow_mut();
+
+            self.manager
+                .render_init_window(handle, window_state.get_flags(), &mut manager_state);
+
+            let (widget_area, mut tmp_buf) =
+                self.manager.render_init_buffer(handle, &mut manager_state);
+
+            // window content
+            window.render_ref(widget_area, &mut tmp_buf, window_state.as_dyn());
+
+            // window decorations
+            self.manager
+                .render_window_frame(handle, &mut tmp_buf, &mut manager_state);
+
+            // copy
+            self.manager
+                .render_copy_buffer(&mut tmp_buf, area, buf, &mut manager_state);
+
+            // keep allocation
+            self.manager.render_free_buffer(tmp_buf, &mut manager_state);
+        }
+    }
+}
+
 impl<T, M> HandleEvent<crossterm::event::Event, Regular, Outcome>
-    for &WindowsState<T, dyn WinState, M>
+    for WindowsState<T, dyn WinState, M>
 where
     T: WinWidget + ?Sized + 'static,
     M: WindowManager,

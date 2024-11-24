@@ -4,6 +4,17 @@ use ratatui::prelude::Style;
 use ratatui::style::Stylize;
 use std::mem;
 
+pub fn fill_buffer(symbol: &str, style: Style, area: Rect, buf: &mut Buffer) {
+    for y in area.top()..area.bottom() {
+        for x in area.left()..area.right() {
+            if let Some(cell) = buf.cell_mut((x, y)) {
+                cell.set_symbol(symbol);
+                cell.set_style(style);
+            }
+        }
+    }
+}
+
 /// Copy a tmp buffer to another buf.
 /// The tmp-buffer is left/top shifted by h_shift/v_shift.
 /// Everything is clipped to the target area.

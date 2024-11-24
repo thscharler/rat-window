@@ -1,27 +1,115 @@
+use crate::win_base::WinBaseState;
 use crate::window_manager::{relocate_event, WindowManager};
-use crate::{WinState, WinWidget, WindowsState};
+use crate::{WinFlags, WinState, WindowManagerState, Windows, WindowsState};
 use rat_event::{ConsumedEvent, HandleEvent, Outcome, Regular};
+use ratatui::buffer::Buffer;
+use ratatui::layout::Rect;
+use ratatui::prelude::StatefulWidget;
+use std::any::{Any, TypeId};
 use std::ops::Deref;
 
 /// Trait for a window with event handling.
-pub trait WinCtWidget: WinWidget {}
+pub trait WinCtWidget {
+    fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut dyn WinCtState);
+}
 
 ///
 /// Trait for a window with event handling.
 ///
 /// Reuses [WinState] and adds event handling.
 ///
-pub trait WinCtState
+pub trait WinCtState: WinBaseState + Any
 where
-    Self: WinState,
     Self: HandleEvent<crossterm::event::Event, Regular, Outcome>,
 {
+    /// Get a copy of the windows flags governing general
+    /// behaviour of the window.
+    fn get_flags(&self) -> WinFlags;
+
+    /// Return self as dyn WinState.
+    fn as_dyn(&mut self) -> &mut dyn WinCtState;
+}
+
+impl dyn WinCtState {
+    /// down cast Any style.
+    pub fn downcast_ref<R: WinCtState + 'static>(&self) -> Option<&R> {
+        if self.type_id() == TypeId::of::<R>() {
+            let p: *const dyn WinCtState = self;
+            Some(unsafe { &*(p as *const R) })
+        } else {
+            None
+        }
+    }
+
+    /// down cast Any style.
+    pub fn downcast_mut<R: WinCtState + 'static>(&'_ mut self) -> Option<&'_ mut R> {
+        if (*self).type_id() == TypeId::of::<R>() {
+            let p: *mut dyn WinCtState = self;
+            Some(unsafe { &mut *(p as *mut R) })
+        } else {
+            None
+        }
+    }
+}
+
+impl<'a, M> StatefulWidget for Windows<'a, dyn WinCtState, M>
+where
+    M: WindowManager + 'a,
+{
+    type State = &'a WindowsState<dyn WinCtWidget, dyn WinCtState, M>;
+
+    fn render(
+        self,
+        area: Rect,
+        buf: &mut Buffer,
+        state: &mut &'a WindowsState<dyn WinCtWidget, dyn WinCtState, M>,
+    ) {
+        state.manager_state.borrow_mut().set_offset(self.offset);
+        state.manager_state.borrow_mut().set_area(area);
+
+        let handles = state.manager_state.borrow_mut().windows();
+        for handle in handles.iter().copied() {
+            state.run_for_window(handle, &mut |window, window_state| {
+                self.manager.render_init_window(
+                    handle,
+                    window_state.get_flags(),
+                    &mut state.manager_state.borrow_mut(),
+                );
+
+                let (widget_area, mut tmp_buf) = self
+                    .manager
+                    .render_init_buffer(handle, &mut state.manager_state.borrow_mut());
+
+                // window content
+                window.render_ref(widget_area, &mut tmp_buf, window_state.as_dyn());
+
+                // window decorations
+                self.manager.render_window_frame(
+                    handle,
+                    &mut tmp_buf,
+                    &mut state.manager_state.borrow_mut(),
+                );
+
+                // copy
+                self.manager.render_copy_buffer(
+                    &mut tmp_buf,
+                    area,
+                    buf,
+                    &mut state.manager_state.borrow_mut(),
+                );
+
+                // keep allocation
+                self.manager
+                    .render_free_buffer(tmp_buf, &mut state.manager_state.borrow_mut());
+            });
+        }
+    }
 }
 
 impl<T, M> HandleEvent<crossterm::event::Event, Regular, Outcome>
     for &WindowsState<T, dyn WinCtState, M>
 where
-    T: WinWidget + ?Sized + 'static,
+    T: WinCtWidget + ?Sized + 'static,
     M: WindowManager,
     M::State: HandleEvent<crossterm::event::Event, Regular, Outcome>,
 {
@@ -40,8 +128,8 @@ where
             // forward to all windows
             'f: {
                 for handle in self.windows().into_iter().rev() {
-                    let r = self.run_for_window(handle, &mut |window| {
-                        window.handle(relocated.as_ref(), Regular)
+                    let r = self.run_for_window(handle, &mut |_window, window_state| {
+                        window_state.handle(relocated.as_ref(), Regular)
                     });
                     if r.is_consumed() {
                         break 'f r;
