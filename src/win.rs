@@ -22,14 +22,7 @@ pub trait WinWidget {
 ///
 /// State for a window.
 ///
-pub trait WinState: WinBaseState + Any {
-    /// Get a copy of the windows flags governing general
-    /// behaviour of the window.
-    fn get_flags(&self) -> WinFlags;
-
-    /// Return self as dyn WinState.
-    fn as_dyn(&mut self) -> &mut dyn WinState;
-}
+pub trait WinState: WinBaseState + Any {}
 
 impl dyn WinState {
     /// down cast Any style.
@@ -82,7 +75,7 @@ where
                     .render_init_buffer(handle, &mut state.rc.manager.borrow_mut());
 
                 // window content
-                window.render_ref(widget_area, &mut tmp_buf, window_state.as_dyn());
+                window.render_ref(widget_area, &mut tmp_buf, window_state);
 
                 // window decorations
                 self.manager.render_window_frame(

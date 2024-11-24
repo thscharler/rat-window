@@ -1,16 +1,22 @@
 use crate::win_base::WinBaseState;
-use crate::{
-    relocate_event, DecoOne, WinFlags, WindowManager, WindowManagerState, Windows, WindowsState,
-};
+use crate::{relocate_event, WinFlags, WindowManager, WindowManagerState, Windows, WindowsState};
 use rat_event::{ConsumedEvent, HandleEvent, Outcome, Regular};
 use rat_salsa::timer::TimeOut;
 use rat_salsa::{AppContext, AppState, AppWidget, Control, RenderContext};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use std::any::Any;
-use std::cell::RefMut;
 use std::cmp::max;
 use std::ops::{Deref, DerefMut};
+
+pub trait WinSalsaWidget<Global, Message, Error>: AppWidget<Global, Message, Error>
+where
+    Self::State: WinSalsaState<Global, Message, Error>,
+    Global: 'static,
+    Message: 'static + Send,
+    Error: 'static + Send,
+{
+}
 
 pub trait WinSalsaState<Global, Message, Error>: WinBaseState + Any
 where
@@ -19,17 +25,13 @@ where
     Message: 'static + Send,
     Error: 'static + Send,
 {
-    /// Get a copy of the windows flags governing general
-    /// behaviour of the window.
-    fn get_flags(&self) -> WinFlags;
-
-    /// Return self as dyn WinState.
-    fn as_dyn(&mut self) -> &mut dyn WinSalsaState<Global, Message, Error>;
 }
 
-impl<'a, Global, Message, Error> AppWidget<Global, Message, Error>
-    for Windows<'a, dyn WinSalsaState<Global, Message, Error>, DecoOne>
+impl<'a, M: WindowManager, Global, Message, Error> AppWidget<Global, Message, Error>
+    for Windows<'a, dyn WinSalsaState<Global, Message, Error>, M>
 where
+    M: WindowManager,
+    M::State: HandleEvent<crossterm::event::Event, Regular, Outcome>,
     Global: 'static,
     Message: 'static + Send,
     Error: 'static + Send,
@@ -37,7 +39,7 @@ where
     type State = WindowsState<
         dyn AppWidget<Global, Message, Error, State = dyn WinSalsaState<Global, Message, Error>>,
         dyn WinSalsaState<Global, Message, Error>,
-        DecoOne,
+        M,
     >;
 
     fn render(
@@ -139,22 +141,29 @@ where
         let relocated = relocated.as_ref();
 
         // forward to window-manager
-        let mut manager: RefMut<'_, M::State> = self.rc.manager.borrow_mut();
-        let manager: &mut M::State = manager.deref_mut();
-        let r0 = manager.handle(relocated, Regular);
+        let r0 = self
+            .rc
+            .manager
+            .borrow_mut()
+            .deref_mut()
+            .handle(relocated, Regular);
 
         // forward to all windows
-        let r1 = 'f: {
-            for handle in self.handles().into_iter().rev() {
-                let r = self.run_for_window(handle, &mut |_window, window_state| {
-                    window_state.crossterm(relocated, ctx)
-                })?;
-                if r.is_consumed() {
-                    break 'f Ok(r);
+        let r1 = if !r0.is_consumed() {
+            'f: {
+                for handle in self.handles().into_iter().rev() {
+                    let r = self.run_for_window(handle, &mut |_window, window_state| {
+                        window_state.crossterm(relocated, ctx)
+                    })?;
+                    if r.is_consumed() {
+                        break 'f Ok(r);
+                    }
                 }
-            }
-            Ok(Control::Continue)
-        }?;
+                Ok(Control::Continue)
+            }?
+        } else {
+            Control::Continue
+        };
 
         Ok(max(r1, r0.into()))
     }

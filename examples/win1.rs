@@ -171,17 +171,13 @@ pub mod min_win {
         fn set_handle(&mut self, handle: WinHandle) {
             self.handle = Some(handle);
         }
-    }
 
-    impl WinCtState for MinWinState {
         fn get_flags(&self) -> WinFlags {
             self.win.clone()
         }
-
-        fn as_dyn(&mut self) -> &mut dyn WinCtState {
-            self
-        }
     }
+
+    impl WinCtState for MinWinState {}
 
     impl MinWinState {
         pub fn new() -> Self {
@@ -266,17 +262,13 @@ pub mod max_win {
         fn set_handle(&mut self, handle: WinHandle) {
             self.handle = Some(handle);
         }
-    }
 
-    impl WinCtState for MaxWinState {
         fn get_flags(&self) -> WinFlags {
             self.win.clone()
         }
-
-        fn as_dyn(&mut self) -> &mut dyn WinCtState {
-            self
-        }
     }
+
+    impl WinCtState for MaxWinState {}
 
     impl MaxWinState {
         pub fn new(windows: WindowsState<dyn WinCtWidget, dyn WinCtState, DecoOne>) -> Self {
