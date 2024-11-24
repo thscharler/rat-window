@@ -1,6 +1,6 @@
 use crate::win_base::WinBaseState;
 use crate::window_manager::{relocate_event, WindowManager};
-use crate::{WinFlags, WinState, WindowManagerState, Windows, WindowsState};
+use crate::{WinFlags, WindowManagerState, Windows, WindowsState};
 use rat_event::{ConsumedEvent, HandleEvent, Outcome, Regular};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -56,29 +56,29 @@ impl<'a, M> StatefulWidget for Windows<'a, dyn WinCtState, M>
 where
     M: WindowManager + 'a,
 {
-    type State = &'a WindowsState<dyn WinCtWidget, dyn WinCtState, M>;
+    type State = WindowsState<dyn WinCtWidget, dyn WinCtState, M>;
 
     fn render(
         self,
         area: Rect,
         buf: &mut Buffer,
-        state: &mut &'a WindowsState<dyn WinCtWidget, dyn WinCtState, M>,
+        state: &mut WindowsState<dyn WinCtWidget, dyn WinCtState, M>,
     ) {
-        state.manager_state.borrow_mut().set_offset(self.offset);
-        state.manager_state.borrow_mut().set_area(area);
+        state.rc.manager.borrow_mut().set_offset(self.offset);
+        state.rc.manager.borrow_mut().set_area(area);
 
-        let handles = state.manager_state.borrow_mut().windows();
-        for handle in handles.iter().copied() {
+        let handles = state.rc.manager.borrow().handles();
+        for handle in handles {
             state.run_for_window(handle, &mut |window, window_state| {
                 self.manager.render_init_window(
                     handle,
                     window_state.get_flags(),
-                    &mut state.manager_state.borrow_mut(),
+                    &mut state.rc.manager.borrow_mut(),
                 );
 
                 let (widget_area, mut tmp_buf) = self
                     .manager
-                    .render_init_buffer(handle, &mut state.manager_state.borrow_mut());
+                    .render_init_buffer(handle, &mut state.rc.manager.borrow_mut());
 
                 // window content
                 window.render_ref(widget_area, &mut tmp_buf, window_state.as_dyn());
@@ -87,7 +87,7 @@ where
                 self.manager.render_window_frame(
                     handle,
                     &mut tmp_buf,
-                    &mut state.manager_state.borrow_mut(),
+                    &mut state.rc.manager.borrow_mut(),
                 );
 
                 // copy
@@ -95,39 +95,40 @@ where
                     &mut tmp_buf,
                     area,
                     buf,
-                    &mut state.manager_state.borrow_mut(),
+                    &mut state.rc.manager.borrow_mut(),
                 );
 
                 // keep allocation
                 self.manager
-                    .render_free_buffer(tmp_buf, &mut state.manager_state.borrow_mut());
+                    .render_free_buffer(tmp_buf, &mut state.rc.manager.borrow_mut());
             });
         }
     }
 }
 
 impl<T, M> HandleEvent<crossterm::event::Event, Regular, Outcome>
-    for &WindowsState<T, dyn WinCtState, M>
+    for WindowsState<T, dyn WinCtState, M>
 where
     T: WinCtWidget + ?Sized + 'static,
     M: WindowManager,
     M::State: HandleEvent<crossterm::event::Event, Regular, Outcome>,
 {
     fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> Outcome {
-        let Some(relocated) = relocate_event(self.manager_state.borrow().deref(), event) else {
+        let Some(relocated) = relocate_event(self.rc.manager.borrow().deref(), event) else {
             return Outcome::Continue;
         };
 
         // forward to window-manager
         let r = self
-            .manager_state
+            .rc
+            .manager
             .borrow_mut()
             .handle(relocated.as_ref(), Regular);
 
         let r = r.or_else(|| {
             // forward to all windows
             'f: {
-                for handle in self.windows().into_iter().rev() {
+                for handle in self.handles().into_iter().rev() {
                     let r = self.run_for_window(handle, &mut |_window, window_state| {
                         window_state.handle(relocated.as_ref(), Regular)
                     });

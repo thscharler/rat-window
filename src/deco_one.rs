@@ -550,7 +550,7 @@ impl WindowManagerState for DecoOneState {
 
     /// Return a list of the window handles
     /// in rendering order.
-    fn windows(&self) -> Vec<WinHandle> {
+    fn handles(&self) -> Vec<WinHandle> {
         self.order.clone()
     }
 

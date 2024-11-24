@@ -118,7 +118,7 @@ pub trait WindowManagerState {
 
     /// Return a list of the window handles
     /// in rendering order.
-    fn windows(&self) -> Vec<WinHandle>;
+    fn handles(&self) -> Vec<WinHandle>;
 
     /// Move a window to front.
     fn window_to_front(&mut self, handle: WinHandle) -> bool;

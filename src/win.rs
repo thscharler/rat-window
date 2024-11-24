@@ -57,44 +57,52 @@ impl<'a, M> StatefulWidget for Windows<'a, dyn WinState, M>
 where
     M: WindowManager + 'a,
 {
-    type State = &'a WindowsState<dyn WinWidget, dyn WinState, M>;
+    type State = WindowsState<dyn WinWidget, dyn WinState, M>;
 
     fn render(
         self,
         area: Rect,
         buf: &mut Buffer,
-        state: &mut &'a WindowsState<dyn WinWidget, dyn WinState, M>,
+        state: &mut WindowsState<dyn WinWidget, dyn WinState, M>,
     ) {
-        let mut manager_state = state.manager_state.borrow_mut();
+        state.rc.manager.borrow_mut().set_offset(self.offset);
+        state.rc.manager.borrow_mut().set_area(area);
 
-        manager_state.set_offset(self.offset);
-        manager_state.set_area(area);
+        let handles = state.rc.manager.borrow().handles();
+        for handle in handles {
+            state.run_for_window(handle, &mut |window, window_state| {
+                self.manager.render_init_window(
+                    handle,
+                    window_state.get_flags(),
+                    &mut state.rc.manager.borrow_mut(),
+                );
 
-        for handle in manager_state.windows().iter().copied() {
-            let (window, window_state) = state.window(handle);
+                let (widget_area, mut tmp_buf) = self
+                    .manager
+                    .render_init_buffer(handle, &mut state.rc.manager.borrow_mut());
 
-            let window = window.borrow();
-            let mut window_state = window_state.borrow_mut();
+                // window content
+                window.render_ref(widget_area, &mut tmp_buf, window_state.as_dyn());
 
-            self.manager
-                .render_init_window(handle, window_state.get_flags(), &mut manager_state);
+                // window decorations
+                self.manager.render_window_frame(
+                    handle,
+                    &mut tmp_buf,
+                    &mut state.rc.manager.borrow_mut(),
+                );
 
-            let (widget_area, mut tmp_buf) =
-                self.manager.render_init_buffer(handle, &mut manager_state);
+                // copy
+                self.manager.render_copy_buffer(
+                    &mut tmp_buf,
+                    area,
+                    buf,
+                    &mut state.rc.manager.borrow_mut(),
+                );
 
-            // window content
-            window.render_ref(widget_area, &mut tmp_buf, window_state.as_dyn());
-
-            // window decorations
-            self.manager
-                .render_window_frame(handle, &mut tmp_buf, &mut manager_state);
-
-            // copy
-            self.manager
-                .render_copy_buffer(&mut tmp_buf, area, buf, &mut manager_state);
-
-            // keep allocation
-            self.manager.render_free_buffer(tmp_buf, &mut manager_state);
+                // keep allocation
+                self.manager
+                    .render_free_buffer(tmp_buf, &mut state.rc.manager.borrow_mut());
+            });
         }
     }
 }
@@ -107,13 +115,11 @@ where
     M::State: HandleEvent<crossterm::event::Event, Regular, Outcome>,
 {
     fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> Outcome {
-        let Some(event) = relocate_event(self.manager_state.borrow().deref(), event) else {
+        let Some(event) = relocate_event(self.rc.manager.borrow().deref(), event) else {
             return Outcome::Continue;
         };
 
         // forward to window-manager
-        self.manager_state
-            .borrow_mut()
-            .handle(event.as_ref(), Regular)
+        self.rc.manager.borrow_mut().handle(event.as_ref(), Regular)
     }
 }

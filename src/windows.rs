@@ -36,15 +36,36 @@ where
     pub _phantom: PhantomData<&'a S>,
 }
 
-#[derive(Debug)]
 pub struct WindowsState<T, S, M = DecoOne>
 where
     T: ?Sized + 'static,
     S: ?Sized + 'static,
     M: WindowManager,
 {
+    pub rc: Rc<WindowsStateRc<T, S, M>>,
+}
+
+impl<T, S, M> Clone for WindowsState<T, S, M>
+where
+    T: ?Sized + 'static,
+    S: ?Sized + 'static,
+    M: WindowManager,
+{
+    fn clone(&self) -> Self {
+        Self {
+            rc: self.rc.clone(),
+        }
+    }
+}
+
+pub struct WindowsStateRc<T, S, M = DecoOne>
+where
+    T: ?Sized + 'static,
+    S: ?Sized + 'static,
+    M: WindowManager,
+{
     /// Window manager.
-    pub manager_state: RefCell<M::State>,
+    pub manager: RefCell<M::State>,
 
     /// Handles
     max_handle: Cell<usize>,
@@ -78,52 +99,6 @@ impl<'a, S: ?Sized, M: WindowManager> Windows<'a, S, M> {
     }
 }
 
-// impl<'a, T, S, M> StatefulWidget for Windows<'a, T, S, M>
-// where
-//     T: ?Sized + 'static,
-//     S: ?Sized + 'static,
-//     M: WindowManager,
-// {
-//     type State = WindowsState<T, S, M>;
-//
-//     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
-//         let mut manager_state = state.manager_state.borrow_mut();
-//         let mut windows = state.windows.borrow_mut();
-//         let mut window_states = state.window_states.borrow_mut();
-//
-//         manager_state.set_offset(self.offset);
-//         manager_state.set_area(area);
-//
-//         for handle in manager_state.windows().iter().copied() {
-//             let window = windows.get(&handle).expect("window");
-//             let window_state = window_states.get_mut(&handle).expect("window");
-//
-//             let mut window = window.borrow();
-//             let mut window_state = window_state.borrow_mut();
-//
-//             self.manager
-//                 .render_init_window(handle, window_state.get_flags(), &mut manager_state);
-//
-//             let (widget_area, mut tmp_buf) =
-//                 self.manager.render_init_buffer(handle, &mut manager_state);
-//
-//             // window content
-//             window.render_ref(widget_area, &mut tmp_buf, window_state.as_dyn());
-//
-//             // window decorations
-//             self.manager
-//                 .render_window_frame(handle, &mut tmp_buf, &mut manager_state);
-//
-//             // copy
-//             self.manager
-//                 .render_copy_buffer(&mut tmp_buf, area, buf, &mut manager_state);
-//
-//             // keep allocation
-//             self.manager.render_free_buffer(tmp_buf, &mut manager_state);
-//         }
-//     }
-// }
-
 impl<T, S, M> HasFocus for WindowsState<T, S, M>
 where
     T: ?Sized + 'static,
@@ -131,11 +106,11 @@ where
     M: WindowManager,
 {
     fn focus(&self) -> FocusFlag {
-        self.manager_state.borrow().focus()
+        self.rc.manager.borrow().focus()
     }
 
     fn area(&self) -> Rect {
-        self.manager_state.borrow_mut().area()
+        self.rc.manager.borrow_mut().area()
     }
 
     fn navigable(&self) -> Navigation {
@@ -152,57 +127,68 @@ where
     /// New state.
     pub fn new(window_manager_state: M::State) -> Self {
         Self {
-            manager_state: RefCell::new(window_manager_state),
-            max_handle: Default::default(),
-            windows: Default::default(),
-            window_states: Default::default(),
-            closed_windows: Default::default(),
+            rc: Rc::new(WindowsStateRc {
+                manager: RefCell::new(window_manager_state),
+                max_handle: Default::default(),
+                windows: Default::default(),
+                window_states: Default::default(),
+                closed_windows: Default::default(),
+            }),
         }
     }
 
     /// Current offset for windows.
     pub fn offset(&self) -> Position {
-        self.manager_state.borrow().offset()
+        self.rc.manager.borrow().offset()
     }
 
     /// Area of the given window.
     pub fn window_area(&self, handle: WinHandle) -> Rect {
-        self.manager_state.borrow().window_area(handle)
+        self.rc.manager.borrow().window_area(handle)
     }
 
     /// Set the area of a window.
     pub fn set_window_area(&self, handle: WinHandle, area: Rect) {
-        self.manager_state
-            .borrow_mut()
-            .set_window_area(handle, area);
-        self.manager_state
+        self.rc.manager.borrow_mut().set_window_area(handle, area);
+        self.rc
+            .manager
             .borrow_mut()
             .set_window_base_area(handle, area);
     }
 
     /// This window has the focus?
     pub fn is_focused_window(&self, handle: WinHandle) -> bool {
-        self.manager_state.borrow().is_focused_window(handle)
+        self.rc.manager.borrow().is_focused_window(handle)
     }
 
     /// Return the focused window handle.
     pub fn focused_window(&self) -> Option<WinHandle> {
-        self.manager_state.borrow().focused_window()
+        self.rc.manager.borrow().focused_window()
     }
 
     /// Set the focused window.
     pub fn focus_window(&self, handle: WinHandle) -> bool {
-        self.manager_state.borrow_mut().focus_window(handle)
+        self.rc.manager.borrow_mut().focus_window(handle)
     }
 
     /// List of all windows in rendering order.
-    pub fn windows(&self) -> Vec<WinHandle> {
-        self.manager_state.borrow().windows().into()
+    pub fn handles(&self) -> Vec<WinHandle> {
+        self.rc.manager.borrow().handles().into()
     }
 
     /// Window at the given __screen__ coordinates.
     pub fn window_at(&self, pos: Position) -> Option<WinHandle> {
-        self.manager_state.borrow().window_at(pos)
+        self.rc.manager.borrow().window_at(pos)
+    }
+
+    /// Change the widget used for the given window.
+    pub fn set_window_widget(&self, handle: WinHandle, widget: Rc<RefCell<T>>) {
+        self.rc.windows.borrow_mut().insert(handle, widget);
+    }
+
+    /// Change the state for the given window.
+    pub fn set_window_state(&self, handle: WinHandle, state: Rc<RefCell<S>>) {
+        self.rc.windows.borrow_mut().insert(handle, state);
     }
 
     /// Open a new window.
@@ -214,39 +200,44 @@ where
 
         window.1.borrow_mut().set_handle(handle);
 
-        self.manager_state.borrow_mut().insert_window(handle);
-        self.manager_state
-            .borrow_mut()
-            .set_window_area(handle, area);
-        self.manager_state
+        self.rc.manager.borrow_mut().insert_window(handle);
+        self.rc.manager.borrow_mut().set_window_area(handle, area);
+        self.rc
+            .manager
             .borrow_mut()
             .set_window_base_area(handle, area);
-        self.windows.borrow_mut().insert(handle, window.0);
-        self.window_states.borrow_mut().insert(handle, window.1);
+        self.rc.windows.borrow_mut().insert(handle, window.0);
+        self.rc.window_states.borrow_mut().insert(handle, window.1);
 
         handle
     }
 
     /// Close a window.
     pub fn close_window(&self, handle: WinHandle) -> bool {
-        if self.windows.borrow_mut().remove(&handle).is_none() {
+        if self.rc.windows.borrow_mut().remove(&handle).is_none() {
             // temporarily removed from the window list.
-            self.closed_windows.borrow_mut().insert(handle);
+            self.rc.closed_windows.borrow_mut().insert(handle);
         }
-        self.manager_state.borrow_mut().remove_window(handle);
+        self.rc.manager.borrow_mut().remove_window(handle);
         true
     }
 
     /// Move a window to front.
     pub fn window_to_front(&self, handle: WinHandle) -> bool {
-        self.manager_state.borrow_mut().window_to_front(handle)
+        self.rc.manager.borrow_mut().window_to_front(handle)
     }
 
     /// Get the window for the given handle.
     pub fn window(&self, handle: WinHandle) -> (Rc<RefCell<T>>, Rc<RefCell<S>>) {
         (
-            self.windows.borrow().get(&handle).expect("window").clone(),
-            self.window_states
+            self.rc
+                .windows
+                .borrow()
+                .get(&handle)
+                .expect("window")
+                .clone(),
+            self.rc
+                .window_states
                 .borrow()
                 .get(&handle)
                 .expect("window")
@@ -263,8 +254,8 @@ where
 {
     #[inline]
     fn new_handle(&self) -> WinHandle {
-        self.max_handle.set(self.max_handle.get() + 1);
-        WinHandle(self.max_handle.get())
+        self.rc.max_handle.set(self.rc.max_handle.get() + 1);
+        WinHandle(self.rc.max_handle.get())
     }
 }
 
@@ -290,8 +281,13 @@ where
     ) -> R {
         let (window, window_state) = {
             (
-                self.windows.borrow_mut().remove(&handle).expect("window"),
-                self.window_states
+                self.rc
+                    .windows
+                    .borrow_mut()
+                    .remove(&handle)
+                    .expect("window"),
+                self.rc
+                    .window_states
                     .borrow_mut()
                     .remove(&handle)
                     .expect("window"),
@@ -302,9 +298,14 @@ where
         let r = f(&mut window.borrow_mut(), &mut window_state.borrow_mut());
 
         // not removed by the call to f()?
-        if !self.closed_windows.borrow_mut().remove(&handle) {
-            self.windows.borrow_mut().insert(handle, window);
-            self.window_states.borrow_mut().insert(handle, window_state);
+        if !self.rc.closed_windows.borrow_mut().remove(&handle) {
+            self.rc.windows.borrow_mut().insert(handle, window);
+            self.rc
+                .window_states
+                .borrow_mut()
+                .insert(handle, window_state);
+        } else {
+            self.rc.closed_windows.borrow_mut().remove(&handle);
         }
 
         r

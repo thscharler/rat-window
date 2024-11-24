@@ -4,16 +4,11 @@ use crate::mini_salsa::theme::THEME;
 use crate::mini_salsa::{run_ui, setup_logging, MiniSalsaState};
 use rat_event::{ct_event, ConsumedEvent, HandleEvent, Outcome, Regular};
 use rat_focus::{FocusBuilder, FocusContainer, HasFocus};
-use rat_window::{
-    DecoOne, DecoOneState, WinCtState, WinCtWidget, WindowManagerState, Windows, WindowsState,
-};
+use rat_window::{DecoOne, DecoOneState, WinCtState, WinCtWidget, Windows, WindowsState};
 use ratatui::layout::{Alignment, Constraint, Layout, Position, Rect};
 use ratatui::widgets::{Block, BorderType, StatefulWidget};
 use ratatui::Frame;
-use std::cell::RefCell;
 use std::cmp::max;
-use std::ops::{Deref, DerefMut};
-use std::rc::Rc;
 
 mod mini_salsa;
 
@@ -23,9 +18,9 @@ fn main() -> Result<(), anyhow::Error> {
     let mut data = Data {};
 
     let mut state = State {
-        win: Rc::new(RefCell::new(WindowsState::new(DecoOneState::new()))),
+        win: WindowsState::new(DecoOneState::new()),
     };
-    state.win.borrow().focus().set(true);
+    state.win.focus().set(true);
 
     run_ui(
         "win1",
@@ -39,7 +34,7 @@ fn main() -> Result<(), anyhow::Error> {
 struct Data {}
 
 struct State {
-    win: Rc<RefCell<WindowsState<dyn WinCtWidget, dyn WinCtState, DecoOne>>>,
+    win: WindowsState<dyn WinCtWidget, dyn WinCtState, DecoOne>,
 }
 
 fn repaint_windows(
@@ -79,11 +74,7 @@ fn repaint_windows(
             .meta_style(THEME.secondary(2)),
     )
     .offset(Position::new(10, 10))
-    .render(
-        hlayout[1],
-        frame.buffer_mut(),
-        &mut state.win.borrow().deref(),
-    );
+    .render(hlayout[1], frame.buffer_mut(), &mut state.win.clone());
 
     Ok(())
 }
@@ -105,21 +96,21 @@ fn handle_windows(
             let c = (rand::random::<u8>() % 26 + b'a') as char;
             let cstr = c.to_string();
 
-            let mut minwin = MinWin;
+            let minwin = MinWin;
             let mut minwin_state = MinWinState::new();
             minwin_state.set_fill(cstr);
 
-            state.win.borrow().open_window(
+            state.win.open_window(
                 (minwin.into(), minwin_state.into()),
                 Rect::new(10, 10, 15, 20),
             );
             Outcome::Changed
         }
         ct_event!(keycode press F(3)) => {
-            let mut maxwin = MaxWin;
-            let mut maxwin_state = MaxWinState::new(state.win.clone());
+            let maxwin = MaxWin;
+            let maxwin_state = MaxWinState::new(state.win.clone());
 
-            state.win.borrow().open_window(
+            state.win.open_window(
                 (maxwin.into(), maxwin_state.into()),
                 Rect::new(10, 10, 20, 15),
             );
@@ -128,7 +119,7 @@ fn handle_windows(
         _ => Outcome::Continue,
     };
 
-    let r = r.or_else(|| state.win.borrow().deref().handle(event, Regular));
+    let r = r.or_else(|| state.win.handle(event, Regular));
 
     Ok(max(f, r))
 }
@@ -245,7 +236,7 @@ pub mod max_win {
     pub struct MaxWinState {
         msg: String,
 
-        windows: Rc<RefCell<WindowsState<dyn WinCtWidget, dyn WinCtState, DecoOne>>>,
+        windows: WindowsState<dyn WinCtWidget, dyn WinCtState, DecoOne>,
         handle: Option<WinHandle>,
         win: WinFlags,
     }
@@ -257,8 +248,8 @@ pub mod max_win {
             fill_buffer(" ", THEME.deepblue(0), area, buf);
 
             let mut info_area = Rect::new(area.x, area.y, area.width, 1);
-            for handle in state.windows.borrow().windows() {
-                let win_area = state.windows.borrow().window_area(handle);
+            for handle in state.windows.handles() {
+                let win_area = state.windows.window_area(handle);
 
                 Line::from(format!(
                     "{:?}: {}:{}+{}+{}",
@@ -288,9 +279,7 @@ pub mod max_win {
     }
 
     impl MaxWinState {
-        pub fn new(
-            windows: Rc<RefCell<WindowsState<dyn WinCtWidget, dyn WinCtState, DecoOne>>>,
-        ) -> Self {
+        pub fn new(windows: WindowsState<dyn WinCtWidget, dyn WinCtState, DecoOne>) -> Self {
             Self {
                 msg: "".to_string(),
                 windows,
