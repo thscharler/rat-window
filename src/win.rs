@@ -1,7 +1,7 @@
 use crate::win_base::WinBaseState;
 use crate::window_manager::{relocate_event, WindowManager};
 use crate::windows::WindowsState;
-use crate::{WindowManagerState, Windows};
+use crate::{render_windows, Windows};
 use rat_event::{HandleEvent, Outcome, Regular};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -59,45 +59,16 @@ where
         buf: &mut Buffer,
         state: &mut WindowsState<dyn WinWidget, dyn WinState, M>,
     ) {
-        state.rc.manager.borrow_mut().set_offset(self.offset);
-        state.rc.manager.borrow_mut().set_area(area);
-
-        let handles = state.rc.manager.borrow().handles();
-        for handle in handles {
-            state.run_for_window(handle, &mut |window, window_state| {
-                self.manager.render_init_window(
-                    handle,
-                    window_state.get_flags(),
-                    &mut state.rc.manager.borrow_mut(),
-                );
-
-                let (widget_area, mut tmp_buf) = self
-                    .manager
-                    .render_init_buffer(handle, &mut state.rc.manager.borrow_mut());
-
-                // window content
-                window.render_ref(widget_area, &mut tmp_buf, window_state);
-
-                // window decorations
-                self.manager.render_window_frame(
-                    handle,
-                    &mut tmp_buf,
-                    &mut state.rc.manager.borrow_mut(),
-                );
-
-                // copy
-                self.manager.render_copy_buffer(
-                    &mut tmp_buf,
-                    area,
-                    buf,
-                    &mut state.rc.manager.borrow_mut(),
-                );
-
-                // keep allocation
-                self.manager
-                    .render_free_buffer(tmp_buf, &mut state.rc.manager.borrow_mut());
-            });
-        }
+        _ = render_windows(
+            &self,
+            |window, widget_area, buf, window_state| {
+                window.render_ref(widget_area, buf, window_state);
+                Ok::<(), ()>(())
+            },
+            area,
+            buf,
+            state,
+        );
     }
 }
 

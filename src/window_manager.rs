@@ -1,4 +1,4 @@
-use crate::{WinFlags, WinHandle};
+use crate::{WinBaseState, WinFlags, WinHandle, Windows, WindowsState};
 use rat_focus::FocusFlag;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
@@ -153,4 +153,65 @@ pub fn relocate_event<'a, 'b>(
         }
         e => Some(Cow::Borrowed(e)),
     }
+}
+
+/// Render all windows.
+///
+pub fn render_windows<'a, T, S, M, RF, Err>(
+    windows: &Windows<'_, S, M>,
+    mut render_window: RF,
+    area: Rect,
+    buf: &mut Buffer,
+    state: &mut WindowsState<T, S, M>,
+) -> Result<(), Err>
+where
+    RF: FnMut(&mut T, Rect, &mut Buffer, &mut S) -> Result<(), Err>,
+    T: ?Sized + 'a,
+    S: WinBaseState + ?Sized + 'a,
+    M: WindowManager,
+{
+    state.rc.manager.borrow_mut().set_offset(windows.offset);
+    state.rc.manager.borrow_mut().set_area(area);
+
+    let handles = state.rc.manager.borrow().handles();
+    for handle in handles {
+        state.run_for_window(handle, &mut |window, window_state| {
+            windows.manager.render_init_window(
+                handle,
+                window_state.get_flags(),
+                &mut state.rc.manager.borrow_mut(),
+            );
+
+            let (widget_area, mut tmp_buf) = windows
+                .manager
+                .render_init_buffer(handle, &mut state.rc.manager.borrow_mut());
+
+            // window content
+            render_window(window, widget_area, &mut tmp_buf, window_state)?;
+
+            // window decorations
+            windows.manager.render_window_frame(
+                handle,
+                &mut tmp_buf,
+                &mut state.rc.manager.borrow_mut(),
+            );
+
+            // copy
+            windows.manager.render_copy_buffer(
+                &mut tmp_buf,
+                area,
+                buf,
+                &mut state.rc.manager.borrow_mut(),
+            );
+
+            // keep allocation
+            windows
+                .manager
+                .render_free_buffer(tmp_buf, &mut state.rc.manager.borrow_mut());
+
+            Ok(())
+        })?;
+    }
+
+    Ok(())
 }

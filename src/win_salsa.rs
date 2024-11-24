@@ -1,11 +1,11 @@
 use crate::win_base::WinBaseState;
-use crate::{relocate_event, WindowManager, WindowManagerState, Windows, WindowsState};
+use crate::{relocate_event, render_windows, WindowManager, Windows, WindowsState};
 use rat_event::{ConsumedEvent, HandleEvent, Outcome, Regular};
 use rat_salsa::timer::TimeOut;
 use rat_salsa::{AppContext, AppState, AppWidget, Control, RenderContext};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use std::any::Any;
+use std::any::{Any, TypeId};
 use std::cmp::max;
 use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
@@ -26,6 +26,35 @@ where
     Message: 'static + Send + Debug,
     Error: 'static + Send + Debug,
 {
+}
+
+impl<Global, Message, Error> dyn WinSalsaState<Global, Message, Error>
+where
+    Global: 'static,
+    Message: 'static + Send + Debug,
+    Error: 'static + Send + Debug,
+{
+    /// down cast Any style.
+    pub fn downcast_ref<R: WinSalsaState<Global, Message, Error> + 'static>(&self) -> Option<&R> {
+        if self.type_id() == TypeId::of::<R>() {
+            let p: *const dyn WinSalsaState<Global, Message, Error> = self;
+            Some(unsafe { &*(p as *const R) })
+        } else {
+            None
+        }
+    }
+
+    /// down cast Any style.
+    pub fn downcast_mut<R: WinSalsaState<Global, Message, Error> + 'static>(
+        &'_ mut self,
+    ) -> Option<&'_ mut R> {
+        if (*self).type_id() == TypeId::of::<R>() {
+            let p: *mut dyn WinSalsaState<Global, Message, Error> = self;
+            Some(unsafe { &mut *(p as *mut R) })
+        } else {
+            None
+        }
+    }
 }
 
 impl<'a, M: WindowManager, Global, Message, Error> AppWidget<Global, Message, Error>
@@ -50,49 +79,15 @@ where
         state: &mut Self::State,
         ctx: &mut RenderContext<'_, Global>,
     ) -> Result<(), Error> {
-        state.rc.manager.borrow_mut().set_offset(self.offset);
-        state.rc.manager.borrow_mut().set_area(area);
-
-        let handles = state.rc.manager.borrow().handles();
-        for handle in handles {
-            state.run_for_window(handle, &mut |window, window_state| {
-                self.manager.render_init_window(
-                    handle,
-                    window_state.get_flags(),
-                    &mut state.rc.manager.borrow_mut(),
-                );
-
-                let (widget_area, mut tmp_buf) = self
-                    .manager
-                    .render_init_buffer(handle, &mut state.rc.manager.borrow_mut());
-
-                // window content
-                window.render(widget_area, &mut tmp_buf, window_state, ctx)?;
-
-                // window decorations
-                self.manager.render_window_frame(
-                    handle,
-                    &mut tmp_buf,
-                    &mut state.rc.manager.borrow_mut(),
-                );
-
-                // copy
-                self.manager.render_copy_buffer(
-                    &mut tmp_buf,
-                    area,
-                    buf,
-                    &mut state.rc.manager.borrow_mut(),
-                );
-
-                // keep allocation
-                self.manager
-                    .render_free_buffer(tmp_buf, &mut state.rc.manager.borrow_mut());
-
-                Ok(())
-            })?;
-        }
-
-        Ok(())
+        render_windows(
+            self,
+            |window, widget_area, buf, window_state| {
+                window.render(widget_area, buf, window_state, ctx)
+            },
+            area,
+            buf,
+            state,
+        )
     }
 }
 
