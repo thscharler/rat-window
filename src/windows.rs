@@ -188,7 +188,7 @@ where
 
     /// Change the state for the given window.
     pub fn set_window_state(&self, handle: WinHandle, state: Rc<RefCell<S>>) {
-        self.rc.windows.borrow_mut().insert(handle, state);
+        self.rc.window_states.borrow_mut().insert(handle, state);
     }
 
     /// Open a new window.
