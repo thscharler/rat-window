@@ -1,5 +1,4 @@
 use crate::win_base::WinBaseState;
-use crate::win_flags::WinFlags;
 use crate::window_manager::{relocate_event, WindowManager};
 use crate::windows::WindowsState;
 use crate::{WindowManagerState, Windows};

@@ -1,6 +1,6 @@
 use crate::win_base::WinBaseState;
 use crate::window_manager::{relocate_event, WindowManager};
-use crate::{WinFlags, WindowManagerState, Windows, WindowsState};
+use crate::{WindowManagerState, Windows, WindowsState};
 use rat_event::{ConsumedEvent, HandleEvent, Outcome, Regular};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;

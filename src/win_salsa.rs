@@ -1,5 +1,5 @@
 use crate::win_base::WinBaseState;
-use crate::{relocate_event, WinFlags, WindowManager, WindowManagerState, Windows, WindowsState};
+use crate::{relocate_event, WindowManager, WindowManagerState, Windows, WindowsState};
 use rat_event::{ConsumedEvent, HandleEvent, Outcome, Regular};
 use rat_salsa::timer::TimeOut;
 use rat_salsa::{AppContext, AppState, AppWidget, Control, RenderContext};
