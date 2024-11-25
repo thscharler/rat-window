@@ -10,14 +10,14 @@ use std::cmp::max;
 use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 
-pub trait WinSalsaWidget<Global, Message, Error>:
-    AppWidget<Global, Message, Error, State = dyn WinSalsaState<Global, Message, Error>>
-where
-    Global: 'static,
-    Message: 'static + Send + Debug,
-    Error: 'static + Send + Debug,
-{
-}
+// pub trait WinSalsaWidget<Global, Message, Error>:
+//     AppWidget<Global, Message, Error, State = dyn WinSalsaState<Global, Message, Error>>
+// where
+//     Global: 'static,
+//     Message: 'static + Send + Debug,
+//     Error: 'static + Send + Debug,
+// {
+// }
 
 pub trait WinSalsaState<Global, Message, Error>: WinBaseState + Any + Debug
 where
@@ -60,7 +60,7 @@ where
 impl<'a, M: WindowManager, Global, Message, Error> AppWidget<Global, Message, Error>
     for Windows<'a, dyn WinSalsaState<Global, Message, Error>, M>
 where
-    M: WindowManager,
+    M: WindowManager + Debug,
     M::State: HandleEvent<crossterm::event::Event, Regular, Outcome>,
     Global: 'static,
     Message: 'static + Send,

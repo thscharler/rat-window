@@ -169,10 +169,6 @@ impl WindowManager for DecoOne {
         meta.flags = flags;
 
         meta.widget_area = self.block.inner_if_some(meta.window_area);
-        if meta.widget_area.y == meta.window_area.y {
-            // need title
-            meta.widget_area.y += 1;
-        }
         meta.close_area = if meta.flags.closeable {
             Rect::new(
                 meta.window_area.right().saturating_sub(4),
