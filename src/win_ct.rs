@@ -1,31 +1,42 @@
-use crate::win_base::WinBaseState;
 use crate::window_manager::{relocate_event, WindowManager};
 use crate::{render_windows, Windows, WindowsState};
 use rat_event::{ConsumedEvent, HandleEvent, Outcome, Regular};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::prelude::StatefulWidget;
-use std::any::{Any, TypeId};
+use std::any::{type_name, Any, TypeId};
 use std::fmt::Debug;
 use std::ops::Deref;
 
 /// Trait for a window with event handling.
-pub trait WinCtWidget: Debug {
-    fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut dyn WinCtState);
+pub trait WinCtWidget {
+    type State: WinCtState + ?Sized;
+
+    fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut Self::State);
 }
 
 ///
 /// Trait for a window with event handling.
 ///
-/// Reuses [WinState] and adds event handling.
-///
-pub trait WinCtState: WinBaseState + Any + Debug
+pub trait WinCtState: Any
 where
     Self: HandleEvent<crossterm::event::Event, Regular, Outcome>,
 {
 }
 
 impl dyn WinCtState {
+    /// Call the closure for a given window.
+    pub fn for_ref<S: WinCtState + 'static>(&self, f: impl FnOnce(&S)) {
+        let downcast = self.downcast_ref::<S>().expect(type_name::<S>());
+        f(downcast)
+    }
+
+    /// Call the closure for a given window.
+    pub fn for_mut<S: WinCtState + 'static>(&mut self, f: impl FnOnce(&mut S)) {
+        let downcast = self.downcast_mut::<S>().expect(type_name::<S>());
+        f(downcast)
+    }
+
     /// down cast Any style.
     pub fn downcast_ref<R: WinCtState + 'static>(&self) -> Option<&R> {
         if self.type_id() == TypeId::of::<R>() {
@@ -52,13 +63,13 @@ where
     M: WindowManager + 'a + Debug,
     M::State: Debug,
 {
-    type State = WindowsState<dyn WinCtWidget, dyn WinCtState, M>;
+    type State = WindowsState<dyn WinCtWidget<State = dyn WinCtState>, dyn WinCtState, M>;
 
     fn render(
         self,
         area: Rect,
         buf: &mut Buffer,
-        state: &mut WindowsState<dyn WinCtWidget, dyn WinCtState, M>,
+        state: &mut WindowsState<dyn WinCtWidget<State = dyn WinCtState>, dyn WinCtState, M>,
     ) {
         _ = render_windows(
             &self,
@@ -76,7 +87,7 @@ where
 impl<T, M> HandleEvent<crossterm::event::Event, Regular, Outcome>
     for WindowsState<T, dyn WinCtState, M>
 where
-    T: WinCtWidget + ?Sized + 'static + Debug,
+    T: WinCtWidget + ?Sized + 'static,
     M: WindowManager + Debug,
     M::State: HandleEvent<crossterm::event::Event, Regular, Outcome> + Debug,
 {

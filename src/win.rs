@@ -23,17 +23,17 @@ pub trait WinWidget {
 ///
 /// State for a window.
 ///
-pub trait WinState: 'static {}
+pub trait WinState: Any {}
 
 impl dyn WinState {
     /// Call the closure for a given window.
-    pub fn for_ref<S: WinState>(&self, f: impl FnOnce(&S)) {
+    pub fn for_ref<S: WinState + 'static>(&self, f: impl FnOnce(&S)) {
         let downcast = self.downcast_ref::<S>().expect(type_name::<S>());
         f(downcast)
     }
 
     /// Call the closure for a given window.
-    pub fn for_mut<S: WinState>(&mut self, f: impl FnOnce(&mut S)) {
+    pub fn for_mut<S: WinState + 'static>(&mut self, f: impl FnOnce(&mut S)) {
         let downcast = self.downcast_mut::<S>().expect(type_name::<S>());
         f(downcast)
     }

@@ -171,7 +171,7 @@ pub mod min_win {
     impl WinWidget for MinWin {
         type State = dyn WinState;
 
-        fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut dyn WinState) {
+        fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
             let state = state.downcast_mut::<MinWinState>().expect("minwin-state");
 
             fill_buffer(" ", THEME.orange(0), area, buf);
@@ -240,7 +240,7 @@ pub mod max_win {
     impl WinWidget for MaxWin {
         type State = dyn WinState;
 
-        fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut dyn WinState) {
+        fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
             let state = state.downcast_mut::<MaxWinState>().expect("maxwin-state");
 
             fill_buffer(" ", THEME.deepblue(0), area, buf);

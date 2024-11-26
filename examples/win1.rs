@@ -34,7 +34,7 @@ fn main() -> Result<(), anyhow::Error> {
 struct Data {}
 
 struct State {
-    win: WindowsState<dyn WinCtWidget, dyn WinCtState, DecoOne>,
+    win: WindowsState<dyn WinCtWidget<State = dyn WinCtState>, dyn WinCtState, DecoOne>,
 }
 
 fn repaint_windows(
@@ -134,7 +134,7 @@ pub mod min_win {
     use crate::mini_salsa::theme::THEME;
     use crossterm::event::Event;
     use rat_event::{ct_event, HandleEvent, Outcome, Regular};
-    use rat_window::{fill_buffer, WinBaseState, WinCtState, WinCtWidget, WinFlags, WinHandle};
+    use rat_window::{fill_buffer, WinCtState, WinCtWidget, WinFlags, WinHandle};
     use ratatui::buffer::Buffer;
     use ratatui::layout::{Position, Rect};
     use std::cell::RefCell;
@@ -143,16 +143,10 @@ pub mod min_win {
     #[derive(Debug)]
     pub struct MinWin;
 
-    #[derive(Debug, Default)]
-    pub struct MinWinState {
-        fill: String,
-
-        handle: Option<WinHandle>,
-        win: WinFlags,
-    }
-
     impl WinCtWidget for MinWin {
-        fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut dyn WinCtState) {
+        type State = dyn WinCtState;
+
+        fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
             let state = state.downcast_mut::<MinWinState>().expect("minwin-state");
 
             fill_buffer(" ", THEME.orange(0), area, buf);
@@ -165,14 +159,18 @@ pub mod min_win {
         }
     }
 
-    impl WinBaseState for MinWinState {
-        fn set_handle(&mut self, handle: WinHandle) {
-            self.handle = Some(handle);
+    impl From<MinWin> for Rc<RefCell<dyn WinCtWidget<State = dyn WinCtState>>> {
+        fn from(value: MinWin) -> Self {
+            Rc::new(RefCell::new(value))
         }
+    }
 
-        fn get_flags(&self) -> WinFlags {
-            self.win.clone()
-        }
+    #[derive(Debug, Default)]
+    pub struct MinWinState {
+        fill: String,
+
+        handle: Option<WinHandle>,
+        win: WinFlags,
     }
 
     impl WinCtState for MinWinState {}
@@ -185,11 +183,13 @@ pub mod min_win {
         pub fn set_fill(&mut self, fill: String) {
             self.fill = fill;
         }
-    }
 
-    impl From<MinWin> for Rc<RefCell<dyn WinCtWidget>> {
-        fn from(value: MinWin) -> Self {
-            Rc::new(RefCell::new(value))
+        pub fn set_handle(&mut self, handle: WinHandle) {
+            self.handle = Some(handle);
+        }
+
+        pub fn get_flags(&self) -> WinFlags {
+            self.win.clone()
         }
     }
 
@@ -214,8 +214,7 @@ pub mod max_win {
     use crossterm::event::Event;
     use rat_event::{ct_event, HandleEvent, Outcome, Regular};
     use rat_window::{
-        fill_buffer, DecoOne, WinBaseState, WinCtState, WinCtWidget, WinFlags, WinHandle,
-        WindowsState,
+        fill_buffer, DecoOne, WinCtState, WinCtWidget, WinFlags, WinHandle, WindowsState,
     };
     use ratatui::buffer::Buffer;
     use ratatui::layout::Rect;
@@ -227,17 +226,10 @@ pub mod max_win {
     #[derive(Debug)]
     pub struct MaxWin;
 
-    #[derive(Debug)]
-    pub struct MaxWinState {
-        msg: String,
-
-        windows: WindowsState<dyn WinCtWidget, dyn WinCtState, DecoOne>,
-        handle: Option<WinHandle>,
-        win: WinFlags,
-    }
-
     impl WinCtWidget for MaxWin {
-        fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut dyn WinCtState) {
+        type State = dyn WinCtState;
+
+        fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
             let state = state.downcast_mut::<MaxWinState>().expect("maxwin-state");
 
             fill_buffer(" ", THEME.deepblue(0), area, buf);
@@ -257,20 +249,27 @@ pub mod max_win {
         }
     }
 
-    impl WinBaseState for MaxWinState {
-        fn set_handle(&mut self, handle: WinHandle) {
-            self.handle = Some(handle);
+    impl From<MaxWin> for Rc<RefCell<dyn WinCtWidget<State = dyn WinCtState>>> {
+        fn from(value: MaxWin) -> Self {
+            Rc::new(RefCell::new(value))
         }
+    }
 
-        fn get_flags(&self) -> WinFlags {
-            self.win.clone()
-        }
+    #[derive(Debug)]
+    pub struct MaxWinState {
+        msg: String,
+
+        windows: WindowsState<dyn WinCtWidget<State = dyn WinCtState>, dyn WinCtState, DecoOne>,
+        handle: Option<WinHandle>,
+        win: WinFlags,
     }
 
     impl WinCtState for MaxWinState {}
 
     impl MaxWinState {
-        pub fn new(windows: WindowsState<dyn WinCtWidget, dyn WinCtState, DecoOne>) -> Self {
+        pub fn new(
+            windows: WindowsState<dyn WinCtWidget<State = dyn WinCtState>, dyn WinCtState, DecoOne>,
+        ) -> Self {
             Self {
                 msg: "".to_string(),
                 windows,
@@ -283,13 +282,16 @@ pub mod max_win {
             self.msg = message;
             self
         }
-    }
 
-    impl From<MaxWin> for Rc<RefCell<dyn WinCtWidget>> {
-        fn from(value: MaxWin) -> Self {
-            Rc::new(RefCell::new(value))
+        pub fn set_handle(&mut self, handle: WinHandle) {
+            self.handle = Some(handle);
+        }
+
+        pub fn get_flags(&self) -> WinFlags {
+            self.win.clone()
         }
     }
+
     impl From<MaxWinState> for Rc<RefCell<dyn WinCtState>> {
         fn from(value: MaxWinState) -> Self {
             Rc::new(RefCell::new(value))
@@ -301,7 +303,7 @@ pub mod max_win {
             match event {
                 ct_event!(mouse any for m) => {
                     self.msg = format!("{}:{}", m.column, m.row);
-                    Outcome::Continue
+                    Outcome::Changed
                 }
                 _ => Outcome::Continue,
             }
