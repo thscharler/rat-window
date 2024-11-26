@@ -113,7 +113,7 @@ fn handle_windows(
         }
         ct_event!(keycode press F(3)) => {
             let maxwin = MaxWin;
-            let mut maxwin_state = MaxWinState::new(state.win.clone());
+            let maxwin_state = MaxWinState::new(state.win.clone());
 
             let handle = state.win.open_window((maxwin.into(), maxwin_state.into()));
             state.win.set_window_area(handle, Rect::new(10, 10, 20, 15));

@@ -312,7 +312,6 @@ pub mod turbo {
     use crate::{AppContext, GlobalState, RenderContext, TurboMsg};
     use anyhow::Error;
     use crossterm::event::Event;
-    use log::debug;
     use rat_salsa::{AppState, AppWidget, Control};
     use rat_widget::event::{ct_event, try_flow, HandleEvent, MenuOutcome, Popup, Regular};
     use rat_widget::focus::{FocusBuilder, FocusContainer};

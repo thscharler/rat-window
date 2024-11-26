@@ -1,6 +1,6 @@
 use crate::window_manager::{relocate_event, WindowManager};
 use crate::windows::WindowsState;
-use crate::{render_windows, WinHandle, Windows};
+use crate::{render_windows, Windows};
 use rat_event::{HandleEvent, Outcome, Regular};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -23,7 +23,7 @@ pub trait WinWidget {
 ///
 /// State for a window.
 ///
-pub trait WinState: Any {}
+pub trait WinState: 'static {}
 
 impl dyn WinState {
     /// Call the closure for a given window.

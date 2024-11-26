@@ -1,4 +1,3 @@
-use crate::win_base::WinBaseState;
 use crate::window_manager::{WindowManager, WindowManagerState};
 use crate::{DecoOne, WinFlags};
 use rat_focus::{FocusFlag, HasFocus, Navigation};
