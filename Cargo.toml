@@ -60,3 +60,6 @@ anyhow = "1.0"
 fern = "0.7"
 rand = "0.8"
 unicode-segmentation = "1.11"
+
+rat-widget = { version = "0.30", path = "../rat-widget" }
+rat-theme = { version = "0.27", path = "../rat-theme" }

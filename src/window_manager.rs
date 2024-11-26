@@ -126,6 +126,11 @@ pub trait WindowManagerState {
     /// Window at the given __screen__ position.
     fn window_at(&self, pos: Position) -> Option<WinHandle>;
 
+    /// Add the offset to the given area.
+    /// This is useful when you create new windows and don't
+    /// want to have them outside the visible area anyway.
+    fn add_offset(&self, area: Rect) -> Rect;
+
     /// Translate screen coordinates to window coordinates.
     fn screen_to_win(&self, pos: Position) -> Option<Position>;
 
@@ -135,7 +140,7 @@ pub trait WindowManagerState {
 
 /// Relocate mouse events to window coordinates.
 pub fn relocate_event<'a, 'b>(
-    window_manager: &'a dyn WindowManagerState,
+    window_manager: &'a impl WindowManagerState,
     event: &'b crossterm::event::Event,
 ) -> Option<Cow<'b, crossterm::event::Event>> {
     match event {

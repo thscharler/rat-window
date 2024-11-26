@@ -575,6 +575,12 @@ impl WindowManagerState for DecoOneState {
         None
     }
 
+    fn add_offset(&self, mut area: Rect) -> Rect {
+        area.x += self.offset.x;
+        area.y += self.offset.y;
+        area
+    }
+
     /// Translate screen coordinates to window coordinates.
     fn screen_to_win(&self, pos: Position) -> Option<Position> {
         if pos.x + self.offset.x >= self.area.x && pos.y + self.offset.y >= self.area.y {

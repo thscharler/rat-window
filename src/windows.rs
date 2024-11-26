@@ -207,6 +207,13 @@ where
         self.rc.window_states.borrow_mut().insert(handle, state);
     }
 
+    /// Add the offset to the given area.
+    /// This is useful when you create new windows and don't
+    /// want to have them outside the visible area anyway.
+    pub fn add_offset(&self, area: Rect) -> Rect {
+        self.rc.manager.borrow().add_offset(area)
+    }
+
     /// Open a new window.
     pub fn open_window(&self, window: (Rc<RefCell<T>>, Rc<RefCell<S>>), area: Rect) -> WinHandle
     where
