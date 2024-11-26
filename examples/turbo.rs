@@ -27,7 +27,7 @@ fn main() -> Result<(), Error> {
     let mut global = GlobalState::new(config, theme);
 
     let app = Scenery;
-    let mut state = SceneryState::default();
+    let mut state = SceneryState::new(global.win.clone());
 
     run_tui(
         app,
@@ -42,14 +42,26 @@ fn main() -> Result<(), Error> {
 /// Globally accessible data/state.
 pub mod global {
     use crate::config::TurboConfig;
+    use crate::message::TurboMsg;
     use crate::theme::TurboTheme;
+    use anyhow::Error;
+    use rat_salsa::AppWidget;
     use rat_widget::msgdialog::MsgDialogState;
     use rat_widget::statusline::StatusLineState;
+    use rat_window::{DecoOneState, WinSalsaState, WindowsState};
 
-    #[derive(Debug)]
     pub struct GlobalState {
         pub cfg: TurboConfig,
         pub theme: TurboTheme,
+        pub win: WindowsState<
+            dyn AppWidget<
+                GlobalState,
+                TurboMsg,
+                Error,
+                State = dyn WinSalsaState<GlobalState, TurboMsg, Error>,
+            >,
+            dyn WinSalsaState<GlobalState, TurboMsg, Error>,
+        >,
         pub status: StatusLineState,
         pub error_dlg: MsgDialogState,
     }
@@ -59,6 +71,7 @@ pub mod global {
             Self {
                 cfg,
                 theme,
+                win: WindowsState::new(DecoOneState::new()),
                 status: Default::default(),
                 error_dlg: Default::default(),
             }
@@ -94,6 +107,7 @@ pub mod app {
     use rat_widget::msgdialog::MsgDialog;
     use rat_widget::statusline::StatusLine;
     use rat_widget::util::fill_buf_area;
+    use rat_window::{WinSalsaState, WindowsState};
     use ratatui::buffer::Buffer;
     use ratatui::layout::{Constraint, Layout, Rect};
     use ratatui::widgets::StatefulWidget;
@@ -102,7 +116,7 @@ pub mod app {
     #[derive(Debug)]
     pub struct Scenery;
 
-    #[derive(Debug, Default)]
+    #[derive(Debug)]
     pub struct SceneryState {
         pub minimal: TurboState,
     }
@@ -126,7 +140,7 @@ pub mod app {
             ])
             .split(area);
 
-            fill_buf_area(buf, layout[1], " ", ctx.g.theme.data());
+            fill_buf_area(buf, layout[1], " ", ctx.g.theme.deepblue(0));
 
             Turbo.render(area, buf, &mut state.minimal, ctx)?;
 
@@ -181,9 +195,28 @@ pub mod app {
         v_layout[1]
     }
 
+    impl SceneryState {
+        pub fn new(
+            win: WindowsState<
+                dyn AppWidget<
+                    GlobalState,
+                    TurboMsg,
+                    Error,
+                    State = dyn WinSalsaState<GlobalState, TurboMsg, Error>,
+                >,
+                dyn WinSalsaState<GlobalState, TurboMsg, Error>,
+            >,
+        ) -> Self {
+            Self {
+                minimal: TurboState::new(win),
+            }
+        }
+    }
+
     impl AppState<GlobalState, TurboMsg, Error> for SceneryState {
         fn init(&mut self, ctx: &mut AppContext<'_>) -> Result<(), Error> {
             ctx.focus = Some(FocusBuilder::for_container(&self.minimal));
+            ctx.focus().enable_log();
             self.minimal.init(ctx)?;
             ctx.g.status.status(0, "Ctrl-Q to quit.");
             Ok(())
@@ -275,9 +308,11 @@ pub mod app {
 }
 
 pub mod turbo {
+    use crate::turbo_editor::{TurboEditor, TurboEditorState};
     use crate::{AppContext, GlobalState, RenderContext, TurboMsg};
     use anyhow::Error;
     use crossterm::event::Event;
+    use log::debug;
     use rat_salsa::{AppState, AppWidget, Control};
     use rat_widget::event::{ct_event, try_flow, HandleEvent, MenuOutcome, Popup, Regular};
     use rat_widget::focus::{FocusBuilder, FocusContainer};
@@ -287,6 +322,7 @@ pub mod turbo {
     };
     use rat_widget::popup::Placement;
     use rat_widget::shadow::{Shadow, ShadowDirection};
+    use rat_window::{DecoOne, WinSalsaState, Windows, WindowsState};
     use ratatui::buffer::Buffer;
     use ratatui::layout::{Constraint, Direction, Layout, Rect};
     use ratatui::style::{Style, Stylize};
@@ -299,6 +335,15 @@ pub mod turbo {
     pub struct TurboState {
         pub menu: MenubarState,
         pub menu_environment: PopupMenuState,
+        pub win: WindowsState<
+            dyn AppWidget<
+                GlobalState,
+                TurboMsg,
+                Error,
+                State = dyn WinSalsaState<GlobalState, TurboMsg, Error>,
+            >,
+            dyn WinSalsaState<GlobalState, TurboMsg, Error>,
+        >,
     }
 
     #[derive(Debug)]
@@ -456,17 +501,6 @@ pub mod turbo {
         }
     }
 
-    impl Default for TurboState {
-        fn default() -> Self {
-            let mut s = Self {
-                menu: Default::default(),
-                menu_environment: Default::default(),
-            };
-            s.menu.bar.select(Some(0));
-            s
-        }
-    }
-
     impl AppWidget<GlobalState, TurboMsg, Error> for Turbo {
         type State = TurboState;
 
@@ -488,6 +522,15 @@ pub mod turbo {
                 ],
             )
             .split(area);
+
+            Windows::<dyn WinSalsaState<GlobalState, TurboMsg, Error>>::new(
+                DecoOne::new()
+                    .title_style(ctx.g.theme.black(3))
+                    .focus_style(ctx.g.theme.focus())
+                    .meta_style(ctx.g.theme.secondary(2)),
+            )
+            .offset((100, 100).into())
+            .render(r[1], buf, &mut ctx.g.win.clone(), ctx)?;
 
             let (menubar, popup) = Menubar::new(&Menu)
                 .styles(ctx.g.theme.menu_style())
@@ -540,6 +583,29 @@ pub mod turbo {
     impl FocusContainer for TurboState {
         fn build(&self, builder: &mut FocusBuilder) {
             builder.widget(&self.menu);
+            // builder.container(&self.win);
+        }
+    }
+
+    impl TurboState {
+        pub fn new(
+            win: WindowsState<
+                dyn AppWidget<
+                    GlobalState,
+                    TurboMsg,
+                    Error,
+                    State = dyn WinSalsaState<GlobalState, TurboMsg, Error>,
+                >,
+                dyn WinSalsaState<GlobalState, TurboMsg, Error>,
+            >,
+        ) -> Self {
+            let mut s = Self {
+                menu: MenubarState::named("menubar"),
+                menu_environment: PopupMenuState::named("popup-7"),
+                win,
+            };
+            s.menu.bar.select(Some(0));
+            s
         }
     }
 
@@ -584,6 +650,15 @@ pub mod turbo {
                 try_flow!({
                     let rr = self.menu.handle(event, Popup);
                     match rr {
+                        MenuOutcome::MenuActivated(0, 0) => {
+                            let handle = ctx
+                                .g
+                                .win
+                                .open_window((TurboEditor::new_rc(), TurboEditorState::new_rc()));
+                            ctx.g.win.set_window_area(handle, Rect::new(0, 0, 60, 15));
+                            ctx.g.win.focus_window(handle);
+                            Control::Changed
+                        }
                         MenuOutcome::MenuActivated(0, 9) => Control::Quit,
                         MenuOutcome::MenuActivated(7, 6) => {
                             // reactivate menu
@@ -610,9 +685,126 @@ pub mod turbo {
                 r => r.into(),
             });
 
+            try_flow!(ctx.g.win.clone().crossterm(event, ctx)?);
+
             Ok(Control::Continue)
         }
     }
+}
+
+pub mod turbo_editor {
+    use crate::global::GlobalState;
+    use crate::message::TurboMsg;
+    use anyhow::Error;
+    use crossterm::event::Event;
+    use log::debug;
+    use rat_event::{HandleEvent, Regular};
+    use rat_focus::{FocusBuilder, FocusContainer};
+    use rat_salsa::{AppContext, AppState, AppWidget, Control, RenderContext};
+    use rat_widget::text_input::{TextInput, TextInputState};
+    use rat_window::{WinBaseState, WinFlags, WinHandle, WinSalsaState};
+    use ratatui::buffer::Buffer;
+    use ratatui::layout::Rect;
+    use ratatui::widgets::{Block, StatefulWidget};
+    use std::cell::RefCell;
+    use std::fmt::Debug;
+    use std::rc::Rc;
+
+    #[derive(Debug)]
+    pub struct TurboEditor;
+
+    #[derive(Debug)]
+    pub struct TurboEditorState {
+        pub area: Rect,
+        pub editor: TextInputState,
+        pub handle: Option<WinHandle>,
+        pub win_flags: WinFlags,
+    }
+
+    impl TurboEditor {
+        pub fn new_rc() -> Rc<
+            RefCell<
+                dyn AppWidget<
+                    GlobalState,
+                    TurboMsg,
+                    Error,
+                    State = dyn WinSalsaState<GlobalState, TurboMsg, Error>,
+                >,
+            >,
+        > {
+            Rc::new(RefCell::new(Self))
+        }
+    }
+
+    impl AppWidget<GlobalState, TurboMsg, Error> for TurboEditor {
+        type State = dyn WinSalsaState<GlobalState, TurboMsg, Error>;
+
+        fn render(
+            &self,
+            area: Rect,
+            buf: &mut Buffer,
+            state: &mut Self::State,
+            ctx: &mut RenderContext<'_, GlobalState>,
+        ) -> Result<(), Error> {
+            let state = state.downcast_mut::<TurboEditorState>().expect("state");
+
+            TextInput::new()
+                .block(Block::bordered().border_style(ctx.g.theme.window_border_style()))
+                .styles(ctx.g.theme.textarea_style())
+                // .scroll(Scroll::new().styles(ctx.g.theme.scroll_style()))
+                // .styles(ctx.g.theme.textarea_style())
+                // .set_horizontal_overscroll(256)
+                .render(area, buf, &mut state.editor);
+            Ok(())
+        }
+    }
+
+    impl FocusContainer for TurboEditorState {
+        fn build(&self, builder: &mut FocusBuilder) {
+            debug!("add TurboEditor");
+            debug!("what is {:#?}", builder);
+            builder.widget(&self.editor);
+        }
+    }
+
+    impl TurboEditorState {
+        pub fn new_rc() -> Rc<RefCell<dyn WinSalsaState<GlobalState, TurboMsg, Error>>> {
+            Rc::new(RefCell::new(Self::new()))
+        }
+
+        pub fn new() -> Self {
+            Self {
+                area: Default::default(),
+                editor: TextInputState::named("turbo-edit"),
+                handle: None,
+                win_flags: Default::default(),
+            }
+        }
+    }
+
+    impl AppState<GlobalState, TurboMsg, Error> for TurboEditorState {
+        fn crossterm(
+            &mut self,
+            event: &Event,
+            _ctx: &mut AppContext<'_, GlobalState, TurboMsg, Error>,
+        ) -> Result<Control<TurboMsg>, Error> {
+            let r = self.editor.handle(event, Regular);
+
+            Ok(r.into())
+        }
+    }
+
+    impl WinBaseState for TurboEditorState {
+        fn set_handle(&mut self, handle: WinHandle) {
+            self.handle = Some(handle);
+        }
+
+        fn get_flags(&self) -> WinFlags {
+            self.win_flags.clone()
+        }
+    }
+
+    impl WinSalsaState<GlobalState, TurboMsg, Error> for TurboEditorState {}
 }
 
 fn setup_logging() -> Result<(), Error> {
@@ -808,7 +1000,7 @@ pub mod theme {
 
         /// Data display style. Used for lists, tables, ...
         pub fn data(&self) -> Style {
-            Style::default().fg(self.s.white[0]).bg(self.s.deepblue[0])
+            Style::default().fg(self.s.white[0]).bg(self.s.gray[2])
         }
 
         /// Background for dialogs.
@@ -834,7 +1026,7 @@ pub mod theme {
         pub fn textarea_style(&self) -> TextStyle {
             TextStyle {
                 style: self.data(),
-                focus: Some(self.focus()),
+                focus: Some(self.text_focus()),
                 select: Some(self.text_select()),
                 ..Default::default()
             }
@@ -901,6 +1093,10 @@ pub mod theme {
                 armed: Some(Style::default().fg(self.s.black[0]).bg(self.s.secondary[0])),
                 ..Default::default()
             }
+        }
+
+        pub fn window_border_style(&self) -> Style {
+            Style::default().fg(self.s.black[3])
         }
 
         /// Complete ScrolledStyle
