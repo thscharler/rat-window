@@ -45,21 +45,15 @@ pub mod global {
     use crate::message::TurboMsg;
     use crate::theme::TurboTheme;
     use anyhow::Error;
-    use rat_salsa::AppWidget;
     use rat_widget::msgdialog::MsgDialogState;
     use rat_widget::statusline::StatusLineState;
-    use rat_window::{DecoOneState, WinSalsaState, WindowsState};
+    use rat_window::{DecoOneState, WinSalsaState, WinSalsaWidget, WindowsState};
 
     pub struct GlobalState {
         pub cfg: TurboConfig,
         pub theme: TurboTheme,
         pub win: WindowsState<
-            dyn AppWidget<
-                GlobalState,
-                TurboMsg,
-                Error,
-                State = dyn WinSalsaState<GlobalState, TurboMsg, Error>,
-            >,
+            dyn WinSalsaWidget<GlobalState, TurboMsg, Error>,
             dyn WinSalsaState<GlobalState, TurboMsg, Error>,
         >,
         pub status: StatusLineState,
@@ -107,7 +101,7 @@ pub mod app {
     use rat_widget::msgdialog::MsgDialog;
     use rat_widget::statusline::StatusLine;
     use rat_widget::util::fill_buf_area;
-    use rat_window::{WinSalsaState, WindowsState};
+    use rat_window::{WinSalsaState, WinSalsaWidget, WindowsState};
     use ratatui::buffer::Buffer;
     use ratatui::layout::{Constraint, Layout, Rect};
     use ratatui::widgets::StatefulWidget;
@@ -198,12 +192,7 @@ pub mod app {
     impl SceneryState {
         pub fn new(
             win: WindowsState<
-                dyn AppWidget<
-                    GlobalState,
-                    TurboMsg,
-                    Error,
-                    State = dyn WinSalsaState<GlobalState, TurboMsg, Error>,
-                >,
+                dyn WinSalsaWidget<GlobalState, TurboMsg, Error>,
                 dyn WinSalsaState<GlobalState, TurboMsg, Error>,
             >,
         ) -> Self {
@@ -321,7 +310,7 @@ pub mod turbo {
     };
     use rat_widget::popup::Placement;
     use rat_widget::shadow::{Shadow, ShadowDirection};
-    use rat_window::{DecoOne, WinSalsaState, Windows, WindowsState};
+    use rat_window::{DecoOne, WinSalsaState, WinSalsaWidget, Windows, WindowsState};
     use ratatui::buffer::Buffer;
     use ratatui::layout::{Constraint, Direction, Layout, Rect};
     use ratatui::style::{Style, Stylize};
@@ -335,12 +324,7 @@ pub mod turbo {
         pub menu: MenubarState,
         pub menu_environment: PopupMenuState,
         pub win: WindowsState<
-            dyn AppWidget<
-                GlobalState,
-                TurboMsg,
-                Error,
-                State = dyn WinSalsaState<GlobalState, TurboMsg, Error>,
-            >,
+            dyn WinSalsaWidget<GlobalState, TurboMsg, Error>,
             dyn WinSalsaState<GlobalState, TurboMsg, Error>,
         >,
     }
@@ -589,12 +573,7 @@ pub mod turbo {
     impl TurboState {
         pub fn new(
             win: WindowsState<
-                dyn AppWidget<
-                    GlobalState,
-                    TurboMsg,
-                    Error,
-                    State = dyn WinSalsaState<GlobalState, TurboMsg, Error>,
-                >,
+                dyn WinSalsaWidget<GlobalState, TurboMsg, Error>,
                 dyn WinSalsaState<GlobalState, TurboMsg, Error>,
             >,
         ) -> Self {
@@ -701,9 +680,10 @@ pub mod turbo_editor {
     use rat_focus::{FocusBuilder, FocusContainer};
     use rat_salsa::{AppContext, AppState, AppWidget, Control, RenderContext};
     use rat_widget::text_input::{TextInput, TextInputState};
-    use rat_window::{WinBaseState, WinFlags, WinHandle, WinSalsaState};
+    use rat_window::{WinBaseState, WinFlags, WinHandle, WinSalsaState, WinSalsaWidget};
     use ratatui::buffer::Buffer;
     use ratatui::layout::Rect;
+    use ratatui::prelude::Style;
     use ratatui::widgets::{Block, StatefulWidget};
     use std::cell::RefCell;
     use std::fmt::Debug;
@@ -717,23 +697,15 @@ pub mod turbo_editor {
         pub area: Rect,
         pub editor: TextInputState,
         pub handle: Option<WinHandle>,
-        pub win_flags: WinFlags,
     }
 
     impl TurboEditor {
-        pub fn new_rc() -> Rc<
-            RefCell<
-                dyn AppWidget<
-                    GlobalState,
-                    TurboMsg,
-                    Error,
-                    State = dyn WinSalsaState<GlobalState, TurboMsg, Error>,
-                >,
-            >,
-        > {
+        pub fn new_rc() -> Rc<RefCell<dyn WinSalsaWidget<GlobalState, TurboMsg, Error>>> {
             Rc::new(RefCell::new(Self))
         }
     }
+
+    impl WinSalsaWidget<GlobalState, TurboMsg, Error> for TurboEditor {}
 
     impl AppWidget<GlobalState, TurboMsg, Error> for TurboEditor {
         type State = dyn WinSalsaState<GlobalState, TurboMsg, Error>;
@@ -748,11 +720,16 @@ pub mod turbo_editor {
             let state = state.downcast_mut::<TurboEditorState>().expect("state");
 
             TextInput::new()
-                .block(Block::bordered().border_style(ctx.g.theme.window_border_style()))
+                .block(
+                    Block::bordered().border_style(
+                        Style::default().fg(ctx.g.theme.scheme().black[0]).bg(ctx
+                            .g
+                            .theme
+                            .scheme()
+                            .gray[2]),
+                    ),
+                )
                 .styles(ctx.g.theme.textarea_style())
-                // .scroll(Scroll::new().styles(ctx.g.theme.scroll_style()))
-                // .styles(ctx.g.theme.textarea_style())
-                // .set_horizontal_overscroll(256)
                 .render(area, buf, &mut state.editor);
             Ok(())
         }
@@ -776,8 +753,11 @@ pub mod turbo_editor {
                 area: Default::default(),
                 editor: TextInputState::named("turbo-edit"),
                 handle: None,
-                win_flags: Default::default(),
             }
+        }
+
+        pub fn set_handle(&mut self, handle: WinHandle) {
+            self.handle = Some(handle);
         }
     }
 
@@ -790,16 +770,6 @@ pub mod turbo_editor {
             let r = self.editor.handle(event, Regular);
 
             Ok(r.into())
-        }
-    }
-
-    impl WinBaseState for TurboEditorState {
-        fn set_handle(&mut self, handle: WinHandle) {
-            self.handle = Some(handle);
-        }
-
-        fn get_flags(&self) -> WinFlags {
-            self.win_flags.clone()
         }
     }
 
