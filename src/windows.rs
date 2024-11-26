@@ -1,6 +1,6 @@
 use crate::win_base::WinBaseState;
 use crate::window_manager::{WindowManager, WindowManagerState};
-use crate::DecoOne;
+use crate::{DecoOne, WinFlags};
 use rat_focus::{FocusFlag, HasFocus, Navigation};
 use ratatui::layout::{Position, Rect};
 use std::cell::{Cell, RefCell};
@@ -48,8 +48,8 @@ where
 
 impl<T, S, M> Debug for WindowsState<T, S, M>
 where
-    T: ?Sized + 'static + Debug,
-    S: ?Sized + 'static + Debug,
+    T: ?Sized + 'static,
+    S: ?Sized + 'static,
     M: WindowManager + Debug,
     M::State: Debug,
 {
@@ -73,7 +73,6 @@ where
     }
 }
 
-#[derive(Debug)]
 pub struct WindowsStateRc<T, S, M = DecoOne>
 where
     T: ?Sized + 'static,
@@ -90,6 +89,25 @@ where
     window_states: RefCell<HashMap<WinHandle, Rc<RefCell<S>>>>,
     /// Window closed during some operation.
     closed_windows: RefCell<HashSet<WinHandle>>,
+}
+
+impl<T, S, M> Debug for WindowsStateRc<T, S, M>
+where
+    T: ?Sized + 'static,
+    S: ?Sized + 'static,
+    M: WindowManager + Debug,
+    M::State: Debug,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let windows = self.windows.borrow().keys().copied().collect::<Vec<_>>();
+
+        f.debug_struct("WindowsStateRc")
+            .field("manager", &self.manager)
+            .field("max_handle", &self.max_handle)
+            .field("windows", &windows)
+            .field("closed_windows", &self.closed_windows)
+            .finish()
+    }
 }
 
 impl<'a, S: ?Sized, M: WindowManager> Windows<'a, S, M> {
@@ -164,12 +182,26 @@ where
     }
 
     /// Set the area of a window.
+    ///
+    /// Sets both the window_area and the base_area of the window.
+    /// This calls [self.add_offset()] to place the area relative to
+    /// the visible area.
     pub fn set_window_area(&self, handle: WinHandle, area: Rect) {
         self.rc.manager.borrow_mut().set_window_area(handle, area);
         self.rc
             .manager
             .borrow_mut()
             .set_window_base_area(handle, area);
+    }
+
+    /// Flags for a window.
+    pub fn window_flags(&self, handle: WinHandle) -> WinFlags {
+        self.rc.manager.borrow().window_flags(handle)
+    }
+
+    /// Set flags for a window.
+    pub fn set_window_flags(&self, handle: WinHandle, flags: WinFlags) {
+        self.rc.manager.borrow_mut().set_window_flags(handle, flags);
     }
 
     /// This window has the focus?
@@ -214,21 +246,16 @@ where
         self.rc.manager.borrow().add_offset(area)
     }
 
-    /// Open a new window.
-    pub fn open_window(&self, window: (Rc<RefCell<T>>, Rc<RefCell<S>>), area: Rect) -> WinHandle
-    where
-        S: WinBaseState,
-    {
+    /// Open a new window with defaults.
+    ///
+    /// You probably want to call
+    /// - [self.set_window_area] to set an actual area for the window.
+    /// - [self.set_window_flags] to change the appearance and behaviour.
+    ///
+    pub fn open_window(&self, window: (Rc<RefCell<T>>, Rc<RefCell<S>>)) -> WinHandle {
         let handle = self.new_handle();
 
-        window.1.borrow_mut().set_handle(handle);
-
         self.rc.manager.borrow_mut().insert_window(handle);
-        self.rc.manager.borrow_mut().set_window_area(handle, area);
-        self.rc
-            .manager
-            .borrow_mut()
-            .set_window_base_area(handle, area);
         self.rc.windows.borrow_mut().insert(handle, window.0);
         self.rc.window_states.borrow_mut().insert(handle, window.1);
 
@@ -251,21 +278,23 @@ where
     }
 
     /// Get the window for the given handle.
-    pub fn window(&self, handle: WinHandle) -> (Rc<RefCell<T>>, Rc<RefCell<S>>) {
-        (
-            self.rc
-                .windows
-                .borrow()
-                .get(&handle)
-                .expect("window")
-                .clone(),
-            self.rc
-                .window_states
-                .borrow()
-                .get(&handle)
-                .expect("window")
-                .clone(),
-        )
+    pub fn window(&self, handle: WinHandle) -> Rc<RefCell<T>> {
+        self.rc
+            .windows
+            .borrow()
+            .get(&handle)
+            .expect("window")
+            .clone()
+    }
+
+    /// Get the window for the given handle.
+    pub fn window_state(&self, handle: WinHandle) -> Rc<RefCell<S>> {
+        self.rc
+            .window_states
+            .borrow()
+            .get(&handle)
+            .expect("window")
+            .clone()
     }
 }
 

@@ -1,4 +1,4 @@
-use crate::{WinBaseState, WinFlags, WinHandle, Windows, WindowsState};
+use crate::{WinFlags, WinHandle, Windows, WindowsState};
 use rat_focus::FocusFlag;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
@@ -8,7 +8,7 @@ pub trait WindowManager {
     type State: WindowManagerState;
 
     /// Initialize rendering of the given window.
-    fn render_init_window(&self, handle: WinHandle, flags: WinFlags, state: &mut Self::State);
+    fn render_init_window(&self, handle: WinHandle, state: &mut Self::State);
 
     /// Create the buffer to render the given window.
     ///
@@ -70,6 +70,12 @@ pub trait WindowManagerState {
 
     /// The active window area including the frame.
     fn set_window_area(&mut self, handle: WinHandle, area: Rect);
+
+    /// Window flags.
+    fn window_flags(&self, handle: WinHandle) -> WinFlags;
+
+    /// Window flags.
+    fn set_window_flags(&mut self, handle: WinHandle, flags: WinFlags);
 
     /// The window area of the window before being snapped to a region.
     ///
@@ -172,7 +178,7 @@ pub fn render_windows<'a, T, S, M, RF, Err>(
 where
     RF: FnMut(&mut T, Rect, &mut Buffer, &mut S) -> Result<(), Err>,
     T: ?Sized + 'a,
-    S: WinBaseState + ?Sized + 'a,
+    S: ?Sized + 'a,
     M: WindowManager,
 {
     state.rc.manager.borrow_mut().set_offset(windows.offset);
@@ -181,11 +187,9 @@ where
     let handles = state.rc.manager.borrow().handles();
     for handle in handles {
         state.run_for_window(handle, &mut |window, window_state| {
-            windows.manager.render_init_window(
-                handle,
-                window_state.get_flags(),
-                &mut state.rc.manager.borrow_mut(),
-            );
+            windows
+                .manager
+                .render_init_window(handle, &mut state.rc.manager.borrow_mut());
 
             let (widget_area, mut tmp_buf) = windows
                 .manager

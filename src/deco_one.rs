@@ -163,10 +163,8 @@ impl WindowManager for DecoOne {
     /// Window manager operation.
     ///
     /// Calculate areas and flags for the given window.
-    fn render_init_window(&self, handle: WinHandle, flags: WinFlags, state: &mut Self::State) {
+    fn render_init_window(&self, handle: WinHandle, state: &mut Self::State) {
         let meta = state.meta.get_mut(&handle).expect("window");
-
-        meta.flags = flags;
 
         meta.widget_area = self.block.inner_if_some(meta.window_area);
         meta.close_area = if meta.flags.closeable {
@@ -446,6 +444,14 @@ impl WindowManagerState for DecoOneState {
     // Active window area.
     fn set_window_area(&mut self, handle: WinHandle, area: Rect) {
         self.meta.get_mut(&handle).expect("window").window_area = area;
+    }
+
+    fn window_flags(&self, handle: WinHandle) -> WinFlags {
+        self.meta.get(&handle).expect("window").flags.clone()
+    }
+
+    fn set_window_flags(&mut self, handle: WinHandle, flags: WinFlags) {
+        self.meta.get_mut(&handle).expect("window").flags = flags;
     }
 
     /// The window area of the window before being snapped to a region.

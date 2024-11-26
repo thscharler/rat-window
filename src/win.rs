@@ -1,12 +1,11 @@
-use crate::win_base::WinBaseState;
 use crate::window_manager::{relocate_event, WindowManager};
 use crate::windows::WindowsState;
-use crate::{render_windows, Windows};
+use crate::{render_windows, WinHandle, Windows};
 use rat_event::{HandleEvent, Outcome, Regular};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::prelude::StatefulWidget;
-use std::any::{Any, TypeId};
+use std::any::{type_name, Any, TypeId};
 use std::fmt::Debug;
 use std::ops::Deref;
 
@@ -15,16 +14,30 @@ use std::ops::Deref;
 ///
 /// TODO: change to StatefulWidgetRef once #1505 is released.
 ///
-pub trait WinWidget: Debug {
-    fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut dyn WinState);
+pub trait WinWidget {
+    type State: WinState + ?Sized;
+
+    fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut Self::State);
 }
 
 ///
 /// State for a window.
 ///
-pub trait WinState: WinBaseState + Any + Debug {}
+pub trait WinState: Any {}
 
 impl dyn WinState {
+    /// Call the closure for a given window.
+    pub fn for_ref<S: WinState>(&self, f: impl FnOnce(&S)) {
+        let downcast = self.downcast_ref::<S>().expect(type_name::<S>());
+        f(downcast)
+    }
+
+    /// Call the closure for a given window.
+    pub fn for_mut<S: WinState>(&mut self, f: impl FnOnce(&mut S)) {
+        let downcast = self.downcast_mut::<S>().expect(type_name::<S>());
+        f(downcast)
+    }
+
     /// down cast Any style.
     pub fn downcast_ref<R: WinState + 'static>(&self) -> Option<&R> {
         if self.type_id() == TypeId::of::<R>() {
@@ -51,13 +64,13 @@ where
     M: WindowManager + 'a + Debug,
     M::State: Debug,
 {
-    type State = WindowsState<dyn WinWidget, dyn WinState, M>;
+    type State = WindowsState<dyn WinWidget<State = dyn WinState>, dyn WinState, M>;
 
     fn render(
         self,
         area: Rect,
         buf: &mut Buffer,
-        state: &mut WindowsState<dyn WinWidget, dyn WinState, M>,
+        state: &mut WindowsState<dyn WinWidget<State = dyn WinState>, dyn WinState, M>,
     ) {
         _ = render_windows(
             &self,
@@ -75,9 +88,9 @@ where
 impl<T, M> HandleEvent<crossterm::event::Event, Regular, Outcome>
     for WindowsState<T, dyn WinState, M>
 where
-    T: WinWidget + ?Sized + 'static + Debug,
+    T: WinWidget + ?Sized + 'static,
     M: WindowManager + Debug,
-    M::State: HandleEvent<crossterm::event::Event, Regular, Outcome> + Debug,
+    M::State: HandleEvent<crossterm::event::Event, Regular, Outcome>,
 {
     fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> Outcome {
         let Some(event) = relocate_event(self.rc.manager.borrow().deref(), event) else {
