@@ -186,6 +186,7 @@ where
     /// This calls [self.add_offset()] to place the area relative to
     /// the visible area.
     pub fn set_window_area(&self, handle: WinHandle, area: Rect) {
+        let area = self.add_offset(area);
         self.rc.manager.borrow_mut().set_window_area(handle, area);
         self.rc
             .manager
