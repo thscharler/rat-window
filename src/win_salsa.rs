@@ -1,41 +1,51 @@
-use crate::win_base::WinBaseState;
 use crate::{relocate_event, render_windows, WindowManager, Windows, WindowsState};
 use rat_event::{ConsumedEvent, HandleEvent, Outcome, Regular};
 use rat_salsa::timer::TimeOut;
 use rat_salsa::{AppContext, AppState, AppWidget, Control, RenderContext};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use std::any::{Any, TypeId};
+use std::any::{type_name, Any, TypeId};
 use std::cmp::max;
 use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 
-// pub trait WinSalsaWidget<Global, Message, Error>:
-//     AppWidget<Global, Message, Error, State = dyn WinSalsaState<Global, Message, Error>>
-// where
-//     Global: 'static,
-//     Message: 'static + Send + Debug,
-//     Error: 'static + Send + Debug,
-// {
-// }
-
-pub trait WinSalsaState<Global, Message, Error>: WinBaseState + Any + Debug
+pub trait WinSalsaWidget<Global, Message, Error>:
+    AppWidget<Global, Message, Error, State = dyn WinSalsaState<Global, Message, Error>>
 where
-    Self: AppState<Global, Message, Error>,
     Global: 'static,
-    Message: 'static + Send + Debug,
-    Error: 'static + Send + Debug,
+    Message: 'static + Send,
+    Error: 'static + Send,
+{
+}
+
+pub trait WinSalsaState<Global, Message, Error>: AppState<Global, Message, Error> + Any
+where
+    Global: 'static,
+    Message: 'static + Send,
+    Error: 'static + Send,
 {
 }
 
 impl<Global, Message, Error> dyn WinSalsaState<Global, Message, Error>
 where
     Global: 'static,
-    Message: 'static + Send + Debug,
-    Error: 'static + Send + Debug,
+    Message: 'static + Send,
+    Error: 'static + Send,
 {
+    /// Call the closure for a given window.
+    pub fn for_ref<S: WinSalsaState<Global, Message, Error>>(&self, f: impl FnOnce(&S)) {
+        let downcast = self.downcast_ref::<S>().expect(type_name::<S>());
+        f(downcast)
+    }
+
+    /// Call the closure for a given window.
+    pub fn for_mut<S: WinSalsaState<Global, Message, Error>>(&mut self, f: impl FnOnce(&mut S)) {
+        let downcast = self.downcast_mut::<S>().expect(type_name::<S>());
+        f(downcast)
+    }
+
     /// down cast Any style.
-    pub fn downcast_ref<R: WinSalsaState<Global, Message, Error> + 'static>(&self) -> Option<&R> {
+    pub fn downcast_ref<R: WinSalsaState<Global, Message, Error>>(&self) -> Option<&R> {
         if self.type_id() == TypeId::of::<R>() {
             let p: *const dyn WinSalsaState<Global, Message, Error> = self;
             Some(unsafe { &*(p as *const R) })
@@ -45,7 +55,7 @@ where
     }
 
     /// down cast Any style.
-    pub fn downcast_mut<R: WinSalsaState<Global, Message, Error> + 'static>(
+    pub fn downcast_mut<R: WinSalsaState<Global, Message, Error>>(
         &'_ mut self,
     ) -> Option<&'_ mut R> {
         if (*self).type_id() == TypeId::of::<R>() {
@@ -60,14 +70,14 @@ where
 impl<'a, M: WindowManager, Global, Message, Error> AppWidget<Global, Message, Error>
     for Windows<'a, dyn WinSalsaState<Global, Message, Error>, M>
 where
-    M: WindowManager + Debug,
-    M::State: HandleEvent<crossterm::event::Event, Regular, Outcome>,
     Global: 'static,
     Message: 'static + Send,
     Error: 'static + Send,
+    M: WindowManager + Debug,
+    M::State: HandleEvent<crossterm::event::Event, Regular, Outcome>,
 {
     type State = WindowsState<
-        dyn AppWidget<Global, Message, Error, State = dyn WinSalsaState<Global, Message, Error>>,
+        dyn WinSalsaWidget<Global, Message, Error>,
         dyn WinSalsaState<Global, Message, Error>,
         M,
     >;
@@ -93,7 +103,7 @@ where
 
 impl<Global, Message, Error, M> AppState<Global, Message, Error>
     for WindowsState<
-        dyn AppWidget<Global, Message, Error, State = dyn WinSalsaState<Global, Message, Error>>,
+        dyn WinSalsaWidget<Global, Message, Error>,
         dyn WinSalsaState<Global, Message, Error>,
         M,
     >
