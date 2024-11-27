@@ -3,7 +3,7 @@ use crate::window_manager::{WindowManager, WindowManagerState};
 use crate::{WinFlags, WinHandle};
 use rat_event::util::MouseFlags;
 use rat_event::{ct_event, ConsumedEvent, HandleEvent, Outcome, Regular};
-use rat_focus::{FocusFlag, HasFocus};
+use rat_focus::{ContainerFlag, FocusFlag};
 use ratatui::buffer::{Buffer, Cell};
 use ratatui::layout::{Alignment, Position, Rect, Size};
 use ratatui::prelude::BlockExt;
@@ -50,8 +50,8 @@ pub struct DecoOneState {
 
     /// Keyboard mode
     mode: KeyboardMode,
-    /// Windows has the focus?
-    focus: FocusFlag,
+    /// Container focus for all windows.
+    container: ContainerFlag,
     /// mouse flags
     mouse: MouseFlags,
 
@@ -81,6 +81,11 @@ struct DecoOneMeta {
     resize_bottom_left_area: Rect,
     resize_bottom_area: Rect,
     resize_bottom_right_area: Rect,
+
+    // window container
+    container: ContainerFlag,
+    // window focus
+    focus: FocusFlag,
 
     // display parameters
     flags: WinFlags,
@@ -252,7 +257,7 @@ impl WindowManager for DecoOne {
     fn render_window_frame(&self, handle: WinHandle, buf: &mut Buffer, state: &mut Self::State) {
         let meta = state.meta.get(&handle).expect("window");
 
-        let focus = meta.flags.focus.get();
+        let focus = meta.container.get();
         let style = if focus {
             if state.mode == KeyboardMode::Meta {
                 self.meta_style.unwrap_or(revert_style(self.title_style))
@@ -375,6 +380,8 @@ impl Default for DecoOneMeta {
             resize_bottom_left_area: Default::default(),
             resize_bottom_area: Default::default(),
             resize_bottom_right_area: Default::default(),
+            container: Default::default(),
+            focus: Default::default(),
             flags: Default::default(),
         }
     }
@@ -418,9 +425,16 @@ impl WindowManagerState for DecoOneState {
         self.offset = offset;
     }
 
-    /// Get the focus flag for [Windows]
-    fn focus(&self) -> FocusFlag {
-        self.focus.clone()
+    fn container(&self) -> ContainerFlag {
+        self.container.clone()
+    }
+
+    fn window_container(&self, handle: WinHandle) -> ContainerFlag {
+        self.meta.get(&handle).expect("window").container.clone()
+    }
+
+    fn window_focus(&self, handle: WinHandle) -> FocusFlag {
+        self.meta.get(&handle).expect("window").focus.clone()
     }
 
     /// Add a new window
@@ -500,60 +514,76 @@ impl WindowManagerState for DecoOneState {
         self.meta.get(&handle).expect("window").widget_area
     }
 
-    /// Is the window focused?
-    fn is_focused_window(&self, handle: WinHandle) -> bool {
-        self.meta
-            .get(&handle)
-            .expect("window")
-            .flags
-            .focus
-            .is_focused()
-    }
-
-    /// Handle of the focused window.
-    fn focused_window(&self) -> Option<WinHandle> {
-        for handle in self.order.iter().rev().copied() {
-            if self.is_focused_window(handle) {
-                return Some(handle);
-            }
-        }
-        None
-    }
-
-    /// Focus the top window.
-    fn focus_top_window(&mut self) -> bool {
-        for meta in self.meta.values_mut() {
-            meta.flags.focus.clear();
-        }
-        if let Some(handle) = self.order.last() {
-            self.meta
-                .get(&handle)
-                .expect("window")
-                .flags
-                .focus
-                .set(true);
-        }
-        true
-    }
-
-    /// Focus the given window.
-    fn focus_window(&mut self, handle: WinHandle) -> bool {
-        for meta in self.meta.values_mut() {
-            meta.flags.focus.clear();
-        }
-        self.meta
-            .get(&handle)
-            .expect("window")
-            .flags
-            .focus
-            .set(true);
-        true
-    }
+    // /// Is the window focused?
+    // fn is_focused_window(&self, handle: WinHandle) -> bool {
+    //     self.meta
+    //         .get(&handle)
+    //         .expect("window")
+    //         .flags
+    //         .focus
+    //         .is_focused()
+    // }
+    //
+    // /// Handle of the focused window.
+    // fn focused_window(&self) -> Option<WinHandle> {
+    //     for handle in self.order.iter().rev().copied() {
+    //         if self.is_focused_window(handle) {
+    //             return Some(handle);
+    //         }
+    //     }
+    //     None
+    // }
+    //
+    // /// Focus the top window.
+    // fn focus_top_window(&mut self) -> bool {
+    //     for meta in self.meta.values_mut() {
+    //         meta.flags.focus.clear();
+    //     }
+    //     if let Some(handle) = self.order.last() {
+    //         self.meta
+    //             .get(&handle)
+    //             .expect("window")
+    //             .flags
+    //             .focus
+    //             .set(true);
+    //     }
+    //     true
+    // }
+    //
+    // /// Focus the given window.
+    // fn focus_window(&mut self, handle: WinHandle) -> bool {
+    //     for meta in self.meta.values_mut() {
+    //         meta.flags.focus.clear();
+    //     }
+    //     self.meta
+    //         .get(&handle)
+    //         .expect("window")
+    //         .flags
+    //         .focus
+    //         .set(true);
+    //     true
+    // }
 
     /// Return a list of the window handles
     /// in rendering order.
     fn handles(&self) -> Vec<WinHandle> {
         self.order.clone()
+    }
+
+    /// Move the focused window to front.
+    fn focus_to_front(&mut self) -> bool {
+        let mut new_front = None;
+        for (handle, meta) in self.meta.iter() {
+            if meta.container.get() {
+                new_front = Some(*handle);
+                break;
+            }
+        }
+        if let Some(new_front) = new_front {
+            self.window_to_front(new_front)
+        } else {
+            false
+        }
     }
 
     /// Move a window to front.
@@ -567,11 +597,13 @@ impl WindowManagerState for DecoOneState {
         }
     }
 
+    /// Get the front window handle
+    fn front_window(&self) -> Option<WinHandle> {
+        self.order.last().copied()
+    }
+
     /// Window at the given __window__ position.
     fn window_at(&self, pos: Position) -> Option<WinHandle> {
-        // let Some(pos) = self.screen_to_win(pos) else {
-        //     return None;
-        // };
         for handle in self.order.iter().rev().copied() {
             let area = self.window_area(handle);
             if area.contains(pos) {
@@ -1082,48 +1114,48 @@ impl DecoOneState {
         }
     }
 
-    fn focus_next(&mut self) -> bool {
-        let mut focus_idx = 0;
-        for (idx, handle) in self.order.iter().enumerate() {
-            if self.is_focused_window(*handle) {
-                focus_idx = idx;
-                break;
-            }
-        }
-        focus_idx += 1;
-        if focus_idx >= self.order.len() {
-            focus_idx = 0;
-        }
-        if let Some(handle) = self.order.get(focus_idx).copied() {
-            self.focus_window(handle);
-            self.window_to_front(handle);
-            true
-        } else {
-            false
-        }
-    }
-
-    fn focus_prev(&mut self) -> bool {
-        let mut focus_idx = 0;
-        for (idx, handle) in self.order.iter().enumerate() {
-            if self.is_focused_window(*handle) {
-                focus_idx = idx;
-                break;
-            }
-        }
-        if focus_idx > 0 {
-            focus_idx -= 1;
-        } else {
-            focus_idx = self.order.len().saturating_sub(1);
-        }
-        if let Some(handle) = self.order.get(focus_idx).copied() {
-            self.focus_window(handle);
-            self.window_to_front(handle);
-            true
-        } else {
-            false
-        }
-    }
+    // fn focus_next(&mut self) -> bool {
+    //     let mut focus_idx = 0;
+    //     for (idx, handle) in self.order.iter().enumerate() {
+    //         if self.is_focused_window(*handle) {
+    //             focus_idx = idx;
+    //             break;
+    //         }
+    //     }
+    //     focus_idx += 1;
+    //     if focus_idx >= self.order.len() {
+    //         focus_idx = 0;
+    //     }
+    //     if let Some(handle) = self.order.get(focus_idx).copied() {
+    //         self.focus_window(handle);
+    //         self.window_to_front(handle);
+    //         true
+    //     } else {
+    //         false
+    //     }
+    // }
+    //
+    // fn focus_prev(&mut self) -> bool {
+    //     let mut focus_idx = 0;
+    //     for (idx, handle) in self.order.iter().enumerate() {
+    //         if self.is_focused_window(*handle) {
+    //             focus_idx = idx;
+    //             break;
+    //         }
+    //     }
+    //     if focus_idx > 0 {
+    //         focus_idx -= 1;
+    //     } else {
+    //         focus_idx = self.order.len().saturating_sub(1);
+    //     }
+    //     if let Some(handle) = self.order.get(focus_idx).copied() {
+    //         self.focus_window(handle);
+    //         self.window_to_front(handle);
+    //         true
+    //     } else {
+    //         false
+    //     }
+    // }
 
     fn move_up(&mut self, handle: WinHandle) -> bool {
         let Some(meta) = self.meta.get_mut(&handle) else {
@@ -1212,7 +1244,9 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
     fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> Outcome {
         let mut r = Outcome::Continue;
 
-        if self.focus.is_focused() {
+        self.focus_to_front();
+
+        if self.container.get() {
             r = r.or_else(|| match event {
                 ct_event!(keycode press F(8)) => {
                     self.mode = match self.mode {
@@ -1224,14 +1258,14 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
                 _ => Outcome::Continue,
             });
         }
-        if self.mode == KeyboardMode::Meta && self.focus.is_focused() {
-            if self.focused_window().is_none() {
-                self.focus_top_window();
-            }
-            if let Some(handle) = self.focused_window() {
+        if self.mode == KeyboardMode::Meta && self.container.get() {
+            // if self.focused_window().is_none() {
+            //     self.focus_top_window();
+            // }
+            if let Some(handle) = self.front_window() {
                 r = r.or_else(|| match event {
-                    ct_event!(keycode press Tab) => self.focus_next().into(),
-                    ct_event!(keycode press SHIFT-Tab) => self.focus_prev().into(),
+                    // ct_event!(keycode press Tab) => self.focus_next().into(),
+                    // ct_event!(keycode press SHIFT-Tab) => self.focus_prev().into(),
                     ct_event!(key press '0') => self
                         .snap_to(handle, self.snap_areas.len().saturating_sub(1))
                         .into(),
@@ -1285,11 +1319,11 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
                     // to front
                     let r0 = self.window_to_front(handle).into();
                     // focus window
-                    let r1 = self.focus_window(handle).into();
+                    // let r1 = self.focus_window(handle).into();
                     // initiate drag
                     let r2 = self.initiate_drag(handle, pos).into();
 
-                    max(max(r0, r1), r2)
+                    max(r0, r2)
                 } else {
                     Outcome::Continue
                 }

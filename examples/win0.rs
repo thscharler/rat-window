@@ -20,7 +20,6 @@ fn main() -> Result<(), anyhow::Error> {
     let mut state = State {
         win: WindowsState::new(DecoOneState::new()),
     };
-    state.win.focus().set(true);
 
     run_ui(
         "win1",
@@ -134,8 +133,8 @@ fn handle_windows(
 }
 
 impl FocusContainer for State {
-    fn build(&self, _builder: &mut FocusBuilder) {
-        // builder.container(&self.win);
+    fn build(&self, builder: &mut FocusBuilder) {
+        builder.container(&self.win);
     }
 }
 

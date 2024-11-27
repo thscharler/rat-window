@@ -1,6 +1,6 @@
 use crate::window_manager::{WindowManager, WindowManagerState};
 use crate::{DecoOne, WinFlags};
-use rat_focus::{FocusFlag, HasFocus, Navigation};
+use rat_focus::{ContainerFlag, FocusBuilder, FocusContainer, FocusFlag, HasFocus, Navigation};
 use ratatui::layout::{Position, Rect};
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -132,25 +132,6 @@ impl<'a, S: ?Sized, M: WindowManager> Windows<'a, S, M> {
     }
 }
 
-impl<T, S, M> HasFocus for WindowsState<T, S, M>
-where
-    T: ?Sized + 'static,
-    S: ?Sized + 'static,
-    M: WindowManager,
-{
-    fn focus(&self) -> FocusFlag {
-        self.rc.manager.borrow().focus()
-    }
-
-    fn area(&self) -> Rect {
-        self.rc.manager.borrow_mut().area()
-    }
-
-    fn navigable(&self) -> Navigation {
-        Navigation::None
-    }
-}
-
 impl<T, S, M> WindowsState<T, S, M>
 where
     T: ?Sized + 'static,
@@ -202,21 +183,6 @@ where
     /// Set flags for a window.
     pub fn set_window_flags(&self, handle: WinHandle, flags: WinFlags) {
         self.rc.manager.borrow_mut().set_window_flags(handle, flags);
-    }
-
-    /// This window has the focus?
-    pub fn is_focused_window(&self, handle: WinHandle) -> bool {
-        self.rc.manager.borrow().is_focused_window(handle)
-    }
-
-    /// Return the focused window handle.
-    pub fn focused_window(&self) -> Option<WinHandle> {
-        self.rc.manager.borrow().focused_window()
-    }
-
-    /// Set the focused window.
-    pub fn focus_window(&self, handle: WinHandle) -> bool {
-        self.rc.manager.borrow_mut().focus_window(handle)
     }
 
     /// List of all windows in rendering order.

@@ -634,7 +634,7 @@ pub mod turbo {
                                 .win
                                 .open_window((TurboEditor::new_rc(), TurboEditorState::new_rc()));
                             ctx.g.win.set_window_area(handle, Rect::new(0, 0, 60, 15));
-                            ctx.g.win.focus_window(handle);
+                            ctx.g.win.window_to_front(handle);
                             Control::Changed
                         }
                         MenuOutcome::MenuActivated(0, 9) => Control::Quit,
@@ -680,7 +680,7 @@ pub mod turbo_editor {
     use rat_focus::{FocusBuilder, FocusContainer};
     use rat_salsa::{AppContext, AppState, AppWidget, Control, RenderContext};
     use rat_widget::text_input::{TextInput, TextInputState};
-    use rat_window::{WinBaseState, WinFlags, WinHandle, WinSalsaState, WinSalsaWidget};
+    use rat_window::{WinHandle, WinSalsaState, WinSalsaWidget};
     use ratatui::buffer::Buffer;
     use ratatui::layout::Rect;
     use ratatui::prelude::Style;

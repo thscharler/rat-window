@@ -20,7 +20,6 @@ fn main() -> Result<(), anyhow::Error> {
     let mut state = State {
         win: WindowsState::new(DecoOneState::new()),
     };
-    state.win.focus().set(true);
 
     run_ui(
         "win1",

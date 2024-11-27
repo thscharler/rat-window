@@ -1,5 +1,5 @@
 use crate::{WinFlags, WinHandle, Windows, WindowsState};
-use rat_focus::FocusFlag;
+use rat_focus::{ContainerFlag, FocusFlag};
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
 use std::borrow::Cow;
@@ -7,6 +7,7 @@ use std::borrow::Cow;
 pub trait WindowManager {
     type State: WindowManagerState;
 
+    // todo: still needed??
     /// Initialize rendering of the given window.
     fn render_init_window(&self, handle: WinHandle, state: &mut Self::State);
 
@@ -56,8 +57,14 @@ pub trait WindowManagerState {
     /// outside the area.
     fn set_offset(&mut self, offset: Position);
 
-    /// Focus flag for the [Windows] widget.
-    fn focus(&self) -> FocusFlag;
+    /// Container flag for all windows.
+    fn container(&self) -> ContainerFlag;
+
+    /// Container flag for the given window.
+    fn window_container(&self, handle: WinHandle) -> ContainerFlag;
+
+    /// Sometimes the window itself wants to act as a widget.
+    fn window_focus(&self, handle: WinHandle) -> FocusFlag;
 
     /// Insert a window into the window manager.
     fn insert_window(&mut self, handle: WinHandle);
@@ -110,26 +117,32 @@ pub trait WindowManagerState {
     /// Area for the window's content.
     fn window_widget_area(&self, handle: WinHandle) -> Rect;
 
-    /// Is the window focused?
-    fn is_focused_window(&self, handle: WinHandle) -> bool;
-
-    /// Handle of the focused window.
-    fn focused_window(&self) -> Option<WinHandle>;
-
-    /// Focus the top window.
-    fn focus_top_window(&mut self) -> bool;
-
-    /// Focus the given window.
-    fn focus_window(&mut self, handle: WinHandle) -> bool;
+    // /// Is the window focused?
+    // fn is_focused_window(&self, handle: WinHandle) -> bool;
+    //
+    // /// Handle of the focused window.
+    // fn focused_window(&self) -> Option<WinHandle>;
+    //
+    // /// Focus the top window.
+    // fn focus_top_window(&mut self) -> bool;
+    //
+    // /// Focus the given window.
+    // fn focus_window(&mut self, handle: WinHandle) -> bool;
 
     /// Return a list of the window handles
     /// in rendering order.
     fn handles(&self) -> Vec<WinHandle>;
 
+    /// Move the focused window to front.
+    fn focus_to_front(&mut self) -> bool;
+
     /// Move a window to front.
     fn window_to_front(&mut self, handle: WinHandle) -> bool;
 
-    /// Window at the given __screen__ position.
+    /// Get the front window handle
+    fn front_window(&self) -> Option<WinHandle>;
+
+    /// Window at the given __window__ position.
     fn window_at(&self, pos: Position) -> Option<WinHandle>;
 
     /// Add the offset to the given area.
@@ -166,8 +179,8 @@ pub fn relocate_event<'a, 'b>(
     }
 }
 
-/// Render all windows.
-///
+/// Helper function used to implement window rendering for a
+/// specific window-type.
 pub fn render_windows<'a, T, S, M, RF, Err>(
     windows: &Windows<'_, S, M>,
     mut render_window: RF,

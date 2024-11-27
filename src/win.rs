@@ -1,7 +1,8 @@
 use crate::window_manager::{relocate_event, WindowManager};
 use crate::windows::WindowsState;
-use crate::{render_windows, Windows};
+use crate::{render_windows, WindowManagerState, Windows};
 use rat_event::{HandleEvent, Outcome, Regular};
+use rat_focus::{ContainerFlag, FocusBuilder, FocusContainer};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::prelude::StatefulWidget;
@@ -85,10 +86,35 @@ where
     }
 }
 
-impl<T, M> HandleEvent<crossterm::event::Event, Regular, Outcome>
-    for WindowsState<T, dyn WinState, M>
+impl<M> FocusContainer for WindowsState<dyn WinWidget<State = dyn WinState>, dyn WinState, M>
 where
-    T: WinWidget + ?Sized + 'static,
+    M: WindowManager,
+{
+    fn build(&self, builder: &mut FocusBuilder) {
+        // only have the windows themselves.
+        let manager = self.rc.manager.borrow();
+        for handle in manager.handles() {
+            let area = manager.window_area(handle);
+            let container = manager.window_container(handle);
+
+            let container_end = builder.start(Some(container), area);
+            builder.widget(&manager.window_focus(handle));
+            builder.end(container_end);
+        }
+    }
+
+    fn container(&self) -> Option<ContainerFlag> {
+        Some(self.rc.manager.borrow().container())
+    }
+
+    fn area(&self) -> Rect {
+        Rect::default()
+    }
+}
+
+impl<M> HandleEvent<crossterm::event::Event, Regular, Outcome>
+    for WindowsState<dyn WinWidget<State = dyn WinState>, dyn WinState, M>
+where
     M: WindowManager + Debug,
     M::State: HandleEvent<crossterm::event::Event, Regular, Outcome>,
 {

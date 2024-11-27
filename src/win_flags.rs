@@ -22,12 +22,6 @@ pub struct WinFlags {
     /// Window can be moved.
     pub moveable: bool,
 
-    /// Focused window.
-    ///
-    /// This is not used with a [rat_focus::Focus] instance.
-    /// The window manager has its own focus logic instead.
-    pub focus: FocusFlag,
-
     pub non_exhaustive: NonExhaustive,
 }
 
@@ -39,7 +33,6 @@ impl Default for WinFlags {
             closeable: false,
             resizable: true,
             moveable: true,
-            focus: Default::default(),
             non_exhaustive: NonExhaustive,
         }
     }
