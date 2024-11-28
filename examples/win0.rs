@@ -227,8 +227,8 @@ pub mod min_win {
 
                 for zrect in state.z_rects[idx].iter() {
                     Span::from(format!(
-                        "    <{}>{}:{}+{}+{} ",
-                        zrect.z, zrect.x, zrect.y, zrect.width, zrect.height
+                        "    {}:{}z{}+{}+{} ",
+                        zrect.x, zrect.y, zrect.z, zrect.width, zrect.height
                     ))
                     .render(info_area, buf);
                     info_area.y += 1;
