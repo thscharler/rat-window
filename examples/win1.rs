@@ -3,7 +3,7 @@ use crate::min_win::{MinWin, MinWinState};
 use crate::mini_salsa::theme::THEME;
 use crate::mini_salsa::{run_ui, setup_logging, MiniSalsaState};
 use rat_event::{ct_event, ConsumedEvent, HandleEvent, Outcome, Regular};
-use rat_focus::{FocusBuilder, FocusContainer, HasFocus};
+use rat_focus::{FocusBuilder, FocusContainer};
 use rat_window::{DecoOne, DecoOneState, WinCtState, WinCtWidget, Windows, WindowsState};
 use ratatui::layout::{Alignment, Constraint, Layout, Position, Rect};
 use ratatui::widgets::{Block, BorderType, StatefulWidget};
@@ -234,7 +234,7 @@ pub mod max_win {
             fill_buffer(" ", THEME.deepblue(0), area, buf);
 
             let mut info_area = Rect::new(area.x, area.y, area.width, 1);
-            for handle in state.windows.handles() {
+            for handle in state.windows.handles_render() {
                 let win_area = state.windows.window_area(handle);
 
                 Line::from(format!(

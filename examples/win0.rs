@@ -2,13 +2,15 @@ use crate::max_win::{MaxWin, MaxWinState};
 use crate::min_win::{MinWin, MinWinState};
 use crate::mini_salsa::theme::THEME;
 use crate::mini_salsa::{run_ui, setup_logging, MiniSalsaState};
+use log::debug;
 use rat_event::{ct_event, ConsumedEvent, HandleEvent, Outcome, Regular};
-use rat_focus::{FocusBuilder, FocusContainer, HasFocus};
-use rat_window::{DecoOne, DecoOneState, WinState, WinWidget, Windows, WindowsState};
+use rat_focus::{FocusBuilder, FocusContainer};
+use rat_window::{DecoOne, DecoOneState, WinFlags, WinState, WinWidget, Windows, WindowsState};
 use ratatui::layout::{Alignment, Constraint, Layout, Position, Rect};
 use ratatui::widgets::{Block, BorderType, StatefulWidget};
 use ratatui::Frame;
 use std::cmp::max;
+use std::ops::DerefMut;
 
 mod mini_salsa;
 
@@ -22,7 +24,7 @@ fn main() -> Result<(), anyhow::Error> {
     };
 
     run_ui(
-        "win1",
+        "win0",
         handle_windows,
         repaint_windows,
         &mut data,
@@ -89,18 +91,44 @@ fn handle_windows(
     // focus.enable_log();
     let f = focus.handle(event, Regular);
 
+    let fd = focus.clone_destruct();
+    debug!("{:#?}", fd);
+    for handle in state.win.handles_render() {
+        let win_state = state.win.window_state(handle);
+        let mut win_state = win_state.borrow_mut();
+        if let Some(minwin) = win_state.deref_mut().downcast_mut::<MinWinState>() {
+            minwin.focus_flags = fd.0.clone();
+            minwin.areas = fd.1.clone();
+            minwin.z_rects = fd.2.clone();
+            minwin.navigations = fd.3.clone();
+            minwin.containers = fd.4.clone();
+        }
+    }
+
     let r = match event {
         ct_event!(keycode press F(2)) => {
-            let c = (rand::random::<u8>() % 26 + b'a') as char;
-            let cstr = c.to_string();
-
             let minwin = MinWin;
 
-            let mut minwin_state = MinWinState::new();
-            minwin_state.set_fill(cstr);
+            let fd = focus.clone_destruct();
+            let minwin_state = MinWinState {
+                focus_flags: fd.0,
+                areas: fd.1,
+                z_rects: fd.2,
+                navigations: fd.3,
+                containers: fd.4,
+                handle: None,
+                win: Default::default(),
+            };
 
             let handle = state.win.open_window((minwin.into(), minwin_state.into()));
             state.win.set_window_area(handle, Rect::new(10, 10, 15, 20));
+            state.win.set_window_flags(
+                handle,
+                WinFlags {
+                    title: format!("{:?}", handle),
+                    ..Default::default()
+                },
+            );
 
             state
                 .win
@@ -116,6 +144,14 @@ fn handle_windows(
 
             let handle = state.win.open_window((maxwin.into(), maxwin_state.into()));
             state.win.set_window_area(handle, Rect::new(10, 10, 20, 15));
+            state.win.set_window_flags(
+                handle,
+                WinFlags {
+                    title: format!("{:?}", handle),
+                    ..Default::default()
+                },
+            );
+
             state
                 .win
                 .window_state(handle)
@@ -144,10 +180,14 @@ pub mod min_win {
     use crate::mini_salsa::theme::THEME;
     use crossterm::event::Event;
     use rat_event::{ct_event, HandleEvent, Outcome, Regular};
+    use rat_focus::{ContainerFlag, FocusFlag, Navigation, ZRect};
     use rat_window::{fill_buffer, WinFlags, WinHandle, WinState, WinWidget};
     use ratatui::buffer::Buffer;
-    use ratatui::layout::{Position, Rect};
+    use ratatui::layout::Rect;
+    use ratatui::text::{Line, Span};
+    use ratatui::widgets::Widget;
     use std::cell::RefCell;
+    use std::ops::Range;
     use std::rc::Rc;
 
     #[derive(Debug)]
@@ -155,10 +195,14 @@ pub mod min_win {
 
     #[derive(Debug, Default)]
     pub struct MinWinState {
-        fill: String,
+        pub focus_flags: Vec<FocusFlag>,
+        pub areas: Vec<Rect>,
+        pub z_rects: Vec<Vec<ZRect>>,
+        pub navigations: Vec<Navigation>,
+        pub containers: Vec<(ContainerFlag, Rect, Range<usize>)>,
 
-        handle: Option<WinHandle>,
-        win: WinFlags,
+        pub handle: Option<WinHandle>,
+        pub win: WinFlags,
     }
 
     impl From<MinWin> for Rc<RefCell<dyn WinWidget<State = dyn WinState>>> {
@@ -174,24 +218,26 @@ pub mod min_win {
             let state = state.downcast_mut::<MinWinState>().expect("minwin-state");
 
             fill_buffer(" ", THEME.orange(0), area, buf);
-            for x in area.left()..area.right() {
-                if let Some(cell) = buf.cell_mut(Position::new(x, area.y)) {
-                    cell.set_style(THEME.orange(1));
-                    cell.set_symbol(state.fill.as_str());
+
+            let mut info_area = Rect::new(area.x, area.y, area.width, 1);
+            for (idx, focus) in state.focus_flags.iter().enumerate() {
+                Span::from(format!("{}:{} {}", idx, focus.name(), focus.get()))
+                    .render(info_area, buf);
+                info_area.y += 1;
+
+                for zrect in state.z_rects[idx].iter() {
+                    Span::from(format!(
+                        "    <{}>{}:{}+{}+{} ",
+                        zrect.z, zrect.x, zrect.y, zrect.width, zrect.height
+                    ))
+                    .render(info_area, buf);
+                    info_area.y += 1;
                 }
             }
         }
     }
 
     impl MinWinState {
-        pub fn new() -> Self {
-            Self::default()
-        }
-
-        pub fn set_fill(&mut self, fill: String) {
-            self.fill = fill;
-        }
-
         pub fn set_handle(&mut self, handle: WinHandle) {
             self.handle = Some(handle);
         }
@@ -245,7 +291,7 @@ pub mod max_win {
             fill_buffer(" ", THEME.deepblue(0), area, buf);
 
             let mut info_area = Rect::new(area.x, area.y, area.width, 1);
-            for handle in state.windows.handles() {
+            for handle in state.windows.handles_render() {
                 let win_area = state.windows.window_area(handle);
 
                 Line::from(format!(
@@ -270,6 +316,7 @@ pub mod max_win {
         msg: String,
 
         windows: WindowsState<dyn WinWidget<State = dyn WinState>, dyn WinState, DecoOne>,
+
         handle: Option<WinHandle>,
         win: WinFlags,
     }
