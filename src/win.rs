@@ -3,14 +3,14 @@ use crate::windows::WindowsState;
 use crate::{render_windows, WindowManagerState, Windows};
 use log::debug;
 use rat_event::{HandleEvent, Outcome, Regular};
-use rat_focus::{ContainerFlag, FocusAdapter, FocusBuilder, FocusContainer, Navigation, ZRect};
+use rat_focus::{ContainerFlag, FocusBuilder, FocusContainer};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::prelude::StatefulWidget;
 use std::any::{type_name, Any, TypeId};
-use std::collections::HashMap;
 use std::fmt::Debug;
 use std::ops::Deref;
+use std::time::SystemTime;
 
 ///
 /// Trait for rendering the contents of a widget.
@@ -93,31 +93,23 @@ where
     M: WindowManager,
 {
     fn build(&self, builder: &mut FocusBuilder) {
+        let t0 = SystemTime::now();
+
         // only have the windows themselves.
         let manager = self.rc.manager.borrow();
 
-        // create the z-index from the render order
-        let mut z_index = HashMap::new();
-        for (z, handle) in self.handles_render().into_iter().enumerate() {
-            z_index.insert(handle, z);
-        }
-
         // navigate the tabs in creation order.
         for handle in self.handles_create() {
-            let area = manager.win_area_to_screen(manager.window_area(handle));
-            let z = z_index.get(&handle).copied().expect("window");
+            let frame = manager.window_frame(handle);
+            let has_focus = frame.as_has_focus();
 
-            let container_end = builder.start(Some(manager.window_container(handle)), area);
-
-            let window = FocusAdapter {
-                focus: manager.window_focus(handle),
-                area,
-                z_areas: [ZRect::from((z as u16, area))],
-                navigation: Navigation::Regular,
-            };
-            builder.widget(&window);
+            let container_end =
+                builder.start(Some(manager.window_container(handle)), has_focus.area());
+            builder.widget(has_focus);
             builder.end(container_end);
         }
+
+        debug!("ee {:?}", t0.elapsed());
     }
 
     fn container(&self) -> Option<ContainerFlag> {

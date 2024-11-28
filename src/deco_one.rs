@@ -1,9 +1,9 @@
 use crate::util::revert_style;
 use crate::window_manager::{WindowManager, WindowManagerState};
-use crate::{WinFlags, WinHandle};
+use crate::{WinFlags, WinHandle, WindowFrame};
 use rat_event::util::MouseFlags;
 use rat_event::{ct_event, ConsumedEvent, HandleEvent, Outcome, Regular};
-use rat_focus::{ContainerFlag, FocusFlag};
+use rat_focus::{ContainerFlag, FocusFlag, HasFocus, Navigation, ZRect};
 use ratatui::buffer::{Buffer, Cell};
 use ratatui::layout::{Alignment, Position, Rect, Size};
 use ratatui::prelude::BlockExt;
@@ -32,20 +32,19 @@ pub struct DecoOneState {
     area: Rect,
     /// View area in windows coordinates.
     area_win: Rect,
+    /// snap to tile areas. when inside a resize to b during move.
+    snap_areas: Vec<(Vec<Rect>, Rect)>,
 
     /// Render offset. All coordinates are shifted by this
     /// value before rendering.
     offset: Position,
 
     /// Window metadata.
-    meta: HashMap<WinHandle, DecoOneMeta>,
+    meta: HashMap<WinHandle, DecoOneFrame>, // todo: rename
     /// Rendering order. Back to front.
     order: Vec<WinHandle>,
     /// Currently dragged mode and window
     drag: Option<Drag>,
-
-    /// snap to tile areas. when inside a resize to b during move.
-    snap_areas: Vec<(Vec<Rect>, Rect)>,
 
     /// Keyboard mode
     mode: KeyboardMode,
@@ -60,7 +59,7 @@ pub struct DecoOneState {
 
 /// Deco-One window data.
 #[derive(Debug)]
-struct DecoOneMeta {
+struct DecoOneFrame {
     // base-line size of the window.
     base_size: Rect,
     // currently snapped to this snap region.
@@ -69,6 +68,10 @@ struct DecoOneMeta {
     window_area: Rect,
     // area for the window content.
     widget_area: Rect,
+    // area as rendered to the screen
+    screen_area: Rect,
+    // z-area as rendered to the screen.
+    screen_z_area: [ZRect; 1],
 
     // close icon
     close_area: Rect,
@@ -164,83 +167,93 @@ impl DecoOne {
 impl WindowManager for DecoOne {
     type State = DecoOneState;
 
-    /// Window manager operation.
-    ///
-    /// Calculate areas and flags for the given window.
-    fn render_init_window(&self, handle: WinHandle, state: &mut Self::State) {
-        let meta = state.meta.get_mut(&handle).expect("window");
+    /// Run preparations before rendering any window.
+    fn render_init(&self, state: &mut Self::State) {
+        for (order_idx, handle) in state.order.iter().enumerate() {
+            let frame = state.meta.get_mut(handle).expect("window");
 
-        meta.widget_area = self.block.inner_if_some(meta.window_area);
-        meta.close_area = if meta.flags.closeable {
-            Rect::new(
-                meta.window_area.right().saturating_sub(4),
-                meta.window_area.top(),
-                3,
-                1,
-            )
-        } else {
-            Rect::default()
-        };
-        meta.move_area = if meta.flags.moveable {
-            Rect::new(
-                meta.window_area.left(),
-                meta.window_area.top(),
-                meta.window_area.width,
-                1,
-            )
-        } else {
-            Rect::default()
-        };
-        meta.resize_left_area = if meta.flags.resizable {
-            Rect::new(
-                meta.window_area.left(),
-                meta.window_area.top() + 1,
-                1,
-                meta.window_area.height.saturating_sub(2),
-            )
-        } else {
-            Rect::default()
-        };
-        meta.resize_right_area = if meta.flags.resizable {
-            Rect::new(
-                meta.window_area.right().saturating_sub(1),
-                meta.window_area.top() + 1,
-                1,
-                meta.window_area.height.saturating_sub(2),
-            )
-        } else {
-            Rect::default()
-        };
-        meta.resize_bottom_left_area = if meta.flags.resizable {
-            Rect::new(
-                meta.window_area.left(),
-                meta.window_area.bottom().saturating_sub(1),
-                1,
-                1,
-            )
-        } else {
-            Rect::default()
-        };
-        meta.resize_bottom_area = if meta.flags.resizable {
-            Rect::new(
-                meta.window_area.left() + 1,
-                meta.window_area.bottom().saturating_sub(1),
-                meta.window_area.width.saturating_sub(2),
-                1,
-            )
-        } else {
-            Rect::default()
-        };
-        meta.resize_bottom_right_area = if meta.flags.resizable {
-            Rect::new(
-                meta.window_area.right().saturating_sub(1),
-                meta.window_area.bottom().saturating_sub(1),
-                1,
-                1,
-            )
-        } else {
-            Rect::default()
-        };
+            if let Some(idx) = frame.snapped_to {
+                frame.window_area = state.snap_areas[idx].1;
+            }
+
+            let screen_area =
+                DecoOneState::area_to_screen(frame.window_area, state.area, state.offset);
+            frame.screen_area = screen_area;
+            frame.screen_z_area[0] = ZRect::from((order_idx as u16, screen_area));
+
+            frame.widget_area = self.block.inner_if_some(frame.window_area);
+
+            frame.close_area = if frame.flags.closeable {
+                Rect::new(
+                    frame.window_area.right().saturating_sub(4),
+                    frame.window_area.top(),
+                    3,
+                    1,
+                )
+            } else {
+                Rect::default()
+            };
+            frame.move_area = if frame.flags.moveable {
+                Rect::new(
+                    frame.window_area.left(),
+                    frame.window_area.top(),
+                    frame.window_area.width,
+                    1,
+                )
+            } else {
+                Rect::default()
+            };
+            frame.resize_left_area = if frame.flags.resizable {
+                Rect::new(
+                    frame.window_area.left(),
+                    frame.window_area.top() + 1,
+                    1,
+                    frame.window_area.height.saturating_sub(2),
+                )
+            } else {
+                Rect::default()
+            };
+            frame.resize_right_area = if frame.flags.resizable {
+                Rect::new(
+                    frame.window_area.right().saturating_sub(1),
+                    frame.window_area.top() + 1,
+                    1,
+                    frame.window_area.height.saturating_sub(2),
+                )
+            } else {
+                Rect::default()
+            };
+            frame.resize_bottom_left_area = if frame.flags.resizable {
+                Rect::new(
+                    frame.window_area.left(),
+                    frame.window_area.bottom().saturating_sub(1),
+                    1,
+                    1,
+                )
+            } else {
+                Rect::default()
+            };
+            frame.resize_bottom_area = if frame.flags.resizable {
+                Rect::new(
+                    frame.window_area.left() + 1,
+                    frame.window_area.bottom().saturating_sub(1),
+                    frame.window_area.width.saturating_sub(2),
+                    1,
+                )
+            } else {
+                Rect::default()
+            };
+            frame.resize_bottom_right_area = if frame.flags.resizable {
+                Rect::new(
+                    frame.window_area.right().saturating_sub(1),
+                    frame.window_area.bottom().saturating_sub(1),
+                    1,
+                    1,
+                )
+            } else {
+                Rect::default()
+            };
+        }
     }
 
     /// Get the correctly sized buffer to render the given window.
@@ -365,13 +378,15 @@ impl Drag {
     }
 }
 
-impl Default for DecoOneMeta {
+impl Default for DecoOneFrame {
     fn default() -> Self {
         Self {
             base_size: Default::default(),
             snapped_to: None,
             window_area: Default::default(),
             widget_area: Default::default(),
+            screen_area: Default::default(),
+            screen_z_area: [Default::default()],
             close_area: Default::default(),
             move_area: Default::default(),
             resize_left_area: Default::default(),
@@ -386,7 +401,31 @@ impl Default for DecoOneMeta {
     }
 }
 
-impl DecoOneMeta {
+impl HasFocus for DecoOneFrame {
+    fn focus(&self) -> FocusFlag {
+        self.focus.clone()
+    }
+
+    fn area(&self) -> Rect {
+        self.screen_area
+    }
+
+    fn z_areas(&self) -> &[ZRect] {
+        self.screen_z_area.as_slice()
+    }
+
+    fn navigable(&self) -> Navigation {
+        Navigation::Regular
+    }
+}
+
+impl WindowFrame for DecoOneFrame {
+    fn as_has_focus(&self) -> &dyn HasFocus {
+        self
+    }
+}
+
+impl DecoOneFrame {
     fn new() -> Self {
         Self::default()
     }
@@ -423,9 +462,7 @@ impl WindowManagerState for DecoOneState {
             self.screen_to_win(area.as_position()).expect("area"),
             area.as_size(),
         ));
-
         self.calculate_snaps();
-        self.update_snapped_windows();
     }
 
     /// Current offset used for rendering.
@@ -450,11 +487,17 @@ impl WindowManagerState for DecoOneState {
         self.meta.get(&handle).expect("window").focus.clone()
     }
 
+    fn window_frame(&self, handle: WinHandle) -> &dyn WindowFrame {
+        self.meta.get(&handle).expect("window")
+    }
+
     /// Add a new window
     fn insert_window(&mut self, handle: WinHandle) {
         assert!(!self.meta.contains_key(&handle));
-        self.meta
-            .insert(handle, DecoOneMeta::named(format!("{:?}", handle).as_str()));
+        self.meta.insert(
+            handle,
+            DecoOneFrame::named(format!("{:?}", handle).as_str()),
+        );
         self.order.push(handle);
     }
 
@@ -471,7 +514,8 @@ impl WindowManagerState for DecoOneState {
 
     /// Active window area.
     fn set_window_area(&mut self, handle: WinHandle, area: Rect) {
-        self.meta.get_mut(&handle).expect("window").window_area = area;
+        let meta = self.meta.get_mut(&handle).expect("window");
+        meta.window_area = area;
     }
 
     /// Behaviour flags for a window.
@@ -529,56 +573,6 @@ impl WindowManagerState for DecoOneState {
     fn window_widget_area(&self, handle: WinHandle) -> Rect {
         self.meta.get(&handle).expect("window").widget_area
     }
-
-    // /// Is the window focused?
-    // fn is_focused_window(&self, handle: WinHandle) -> bool {
-    //     self.meta
-    //         .get(&handle)
-    //         .expect("window")
-    //         .flags
-    //         .focus
-    //         .is_focused()
-    // }
-    //
-    // /// Handle of the focused window.
-    // fn focused_window(&self) -> Option<WinHandle> {
-    //     for handle in self.order.iter().rev().copied() {
-    //         if self.is_focused_window(handle) {
-    //             return Some(handle);
-    //         }
-    //     }
-    //     None
-    // }
-    //
-    // /// Focus the top window.
-    // fn focus_top_window(&mut self) -> bool {
-    //     for meta in self.meta.values_mut() {
-    //         meta.flags.focus.clear();
-    //     }
-    //     if let Some(handle) = self.order.last() {
-    //         self.meta
-    //             .get(&handle)
-    //             .expect("window")
-    //             .flags
-    //             .focus
-    //             .set(true);
-    //     }
-    //     true
-    // }
-    //
-    // /// Focus the given window.
-    // fn focus_window(&mut self, handle: WinHandle) -> bool {
-    //     for meta in self.meta.values_mut() {
-    //         meta.flags.focus.clear();
-    //     }
-    //     self.meta
-    //         .get(&handle)
-    //         .expect("window")
-    //         .flags
-    //         .focus
-    //         .set(true);
-    //     true
-    // }
 
     /// Return a list of the window handles
     /// in rendering order.
@@ -672,36 +666,7 @@ impl WindowManagerState for DecoOneState {
     /// Translate a window area to screen coordinates and
     /// clips the area.
     fn win_area_to_screen(&self, area: Rect) -> Rect {
-        // shift + clip 0
-        let mut top = (area.top() + self.area.top()).saturating_sub(self.offset.y);
-        let mut left = (area.left() + self.area.left()).saturating_sub(self.offset.x);
-        let mut bottom = (area.bottom() + self.area.top()).saturating_sub(self.offset.y);
-        let mut right = (area.right() + self.area.left()).saturating_sub(self.offset.x);
-
-        // clip 1
-        if top < self.area.top() {
-            top = self.area.top();
-        } else if top > self.area.bottom() {
-            top = self.area.bottom();
-        }
-        if left < self.area.left() {
-            left = self.area.left();
-        } else if left > self.area.right() {
-            left = self.area.right();
-        }
-        if bottom > self.area.bottom() {
-            bottom = self.area.bottom();
-        } else if bottom < self.area.top() {
-            bottom = self.area.top();
-        }
-        if right > self.area.right() {
-            right = self.area.right();
-        } else if right < self.area.left() {
-            right = self.area.left();
-        }
-
-        // construct
-        Rect::new(left, top, right - left, bottom - top)
+        Self::area_to_screen(area, self.area, self.offset)
     }
 }
 
@@ -1024,15 +989,43 @@ impl DecoOneState {
 }
 
 impl DecoOneState {
-    /// Recalculate the window areas for snapped windows.
-    fn update_snapped_windows(&mut self) {
-        for meta in self.meta.values_mut() {
-            if let Some(idx) = meta.snapped_to {
-                meta.window_area = self.snap_areas[idx].1;
-            }
-        }
-    }
+    /// Translate a window area to screen coordinates and
+    /// clips the area.
+    fn area_to_screen(area: Rect, windows_area: Rect, windows_offset: Position) -> Rect {
+        // shift + clip 0
+        let mut top = (area.top() + windows_area.top()).saturating_sub(windows_offset.y);
+        let mut left = (area.left() + windows_area.left()).saturating_sub(windows_offset.x);
+        let mut bottom = (area.bottom() + windows_area.top()).saturating_sub(windows_offset.y);
+        let mut right = (area.right() + windows_area.left()).saturating_sub(windows_offset.x);
 
+        // clip 1
+        if top < windows_area.top() {
+            top = windows_area.top();
+        } else if top > windows_area.bottom() {
+            top = windows_area.bottom();
+        }
+        if left < windows_area.left() {
+            left = windows_area.left();
+        } else if left > windows_area.right() {
+            left = windows_area.right();
+        }
+        if bottom > windows_area.bottom() {
+            bottom = windows_area.bottom();
+        } else if bottom < windows_area.top() {
+            bottom = windows_area.top();
+        }
+        if right > windows_area.right() {
+            right = windows_area.right();
+        } else if right < windows_area.left() {
+            right = windows_area.left();
+        }
+
+        // construct
+        Rect::new(left, top, right - left, bottom - top)
+    }
+}
+
+impl DecoOneState {
     /// Start dragging.
     fn initiate_drag(&mut self, handle: WinHandle, pos: Position) -> bool {
         if let Some(meta) = self.meta.get(&handle) {
@@ -1205,49 +1198,6 @@ impl DecoOneState {
         }
     }
 
-    // fn focus_next(&mut self) -> bool {
-    //     let mut focus_idx = 0;
-    //     for (idx, handle) in self.order.iter().enumerate() {
-    //         if self.is_focused_window(*handle) {
-    //             focus_idx = idx;
-    //             break;
-    //         }
-    //     }
-    //     focus_idx += 1;
-    //     if focus_idx >= self.order.len() {
-    //         focus_idx = 0;
-    //     }
-    //     if let Some(handle) = self.order.get(focus_idx).copied() {
-    //         self.focus_window(handle);
-    //         self.window_to_front(handle);
-    //         true
-    //     } else {
-    //         false
-    //     }
-    // }
-    //
-    // fn focus_prev(&mut self) -> bool {
-    //     let mut focus_idx = 0;
-    //     for (idx, handle) in self.order.iter().enumerate() {
-    //         if self.is_focused_window(*handle) {
-    //             focus_idx = idx;
-    //             break;
-    //         }
-    //     }
-    //     if focus_idx > 0 {
-    //         focus_idx -= 1;
-    //     } else {
-    //         focus_idx = self.order.len().saturating_sub(1);
-    //     }
-    //     if let Some(handle) = self.order.get(focus_idx).copied() {
-    //         self.focus_window(handle);
-    //         self.window_to_front(handle);
-    //         true
-    //     } else {
-    //         false
-    //     }
-    // }
-
     fn move_up(&mut self, handle: WinHandle) -> bool {
         let Some(meta) = self.meta.get_mut(&handle) else {
             panic!("invalid handle");
@@ -1335,7 +1285,7 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
     fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> Outcome {
         let mut r = Outcome::Continue;
 
-        ///
+        // Special action for focus.
         self.focus_to_front();
 
         if self.container.get() {

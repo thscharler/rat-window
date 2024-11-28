@@ -1,15 +1,15 @@
 use crate::{WinFlags, WinHandle, Windows, WindowsState};
-use rat_focus::{ContainerFlag, FocusFlag};
+use rat_focus::{ContainerFlag, FocusFlag, HasFocus};
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
 use std::borrow::Cow;
+use std::ops::DerefMut;
 
 pub trait WindowManager {
     type State: WindowManagerState;
 
-    // todo: still needed??
-    /// Initialize rendering of the given window.
-    fn render_init_window(&self, handle: WinHandle, state: &mut Self::State);
+    /// Run calculations based on the currently set windows area and offset.
+    fn render_init(&self, state: &mut Self::State);
 
     /// Create the buffer to render the given window.
     ///
@@ -65,6 +65,9 @@ pub trait WindowManagerState {
 
     /// Sometimes the window itself wants to act as a widget.
     fn window_focus(&self, handle: WinHandle) -> FocusFlag;
+
+    /// Get the window frame widget.
+    fn window_frame(&self, handle: WinHandle) -> &dyn WindowFrame;
 
     /// Insert a window into the window manager.
     fn insert_window(&mut self, handle: WinHandle);
@@ -149,6 +152,12 @@ pub trait WindowManagerState {
     fn win_area_to_screen(&self, area: Rect) -> Rect;
 }
 
+/// Trait for the window frame widget.
+pub trait WindowFrame {
+    /// Do some trait upcasting.
+    fn as_has_focus(&self) -> &dyn HasFocus;
+}
+
 /// Relocate mouse events to window coordinates.
 pub fn relocate_event<'a, 'b>(
     window_manager: &'a impl WindowManagerState,
@@ -189,13 +198,13 @@ where
     state.rc.manager.borrow_mut().set_offset(windows.offset);
     state.rc.manager.borrow_mut().set_area(area);
 
+    windows
+        .manager
+        .render_init(state.rc.manager.borrow_mut().deref_mut());
+
     let handles = state.rc.manager.borrow().handles_render();
     for handle in handles {
         state.run_for_window(handle, &mut |window, window_state| {
-            windows
-                .manager
-                .render_init_window(handle, &mut state.rc.manager.borrow_mut());
-
             let (widget_area, mut tmp_buf) = windows
                 .manager
                 .render_init_buffer(handle, &mut state.rc.manager.borrow_mut());
