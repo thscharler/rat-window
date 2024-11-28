@@ -106,7 +106,7 @@ where
         let r = r.or_else(|| {
             // forward to all windows
             'f: {
-                for handle in self.handles().into_iter().rev() {
+                for handle in self.handles_render().into_iter().rev() {
                     let r = self.run_for_window(handle, &mut |_window, window_state| {
                         window_state.handle(relocated.as_ref(), Regular)
                     });

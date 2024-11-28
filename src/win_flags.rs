@@ -1,5 +1,4 @@
 use crate::_private::NonExhaustive;
-use rat_focus::FocusFlag;
 
 /// Window parameters.
 ///

@@ -10,7 +10,6 @@ use ratatui::prelude::BlockExt;
 use ratatui::style::Style;
 use ratatui::text::{Span, Text};
 use ratatui::widgets::{Block, Widget, WidgetRef};
-use std::cmp::max;
 use std::collections::HashMap;
 use std::mem;
 use std::ops::Neg;
@@ -387,6 +386,20 @@ impl Default for DecoOneMeta {
     }
 }
 
+impl DecoOneMeta {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn named(name: &str) -> Self {
+        Self {
+            container: ContainerFlag::named(name),
+            focus: FocusFlag::named(name),
+            ..Default::default()
+        }
+    }
+}
+
 impl DecoOneState {
     pub fn new() -> Self {
         Self::default()
@@ -440,7 +453,8 @@ impl WindowManagerState for DecoOneState {
     /// Add a new window
     fn insert_window(&mut self, handle: WinHandle) {
         assert!(!self.meta.contains_key(&handle));
-        self.meta.insert(handle, DecoOneMeta::default());
+        self.meta
+            .insert(handle, DecoOneMeta::named(format!("{:?}", handle).as_str()));
         self.order.push(handle);
     }
 
@@ -455,15 +469,17 @@ impl WindowManagerState for DecoOneState {
         self.meta.get(&handle).expect("window").window_area
     }
 
-    // Active window area.
+    /// Active window area.
     fn set_window_area(&mut self, handle: WinHandle, area: Rect) {
         self.meta.get_mut(&handle).expect("window").window_area = area;
     }
 
+    /// Behaviour flags for a window.
     fn window_flags(&self, handle: WinHandle) -> WinFlags {
         self.meta.get(&handle).expect("window").flags.clone()
     }
 
+    /// Behaviour flags for a window.
     fn set_window_flags(&mut self, handle: WinHandle, flags: WinFlags) {
         self.meta.get_mut(&handle).expect("window").flags = flags;
     }
@@ -566,7 +582,7 @@ impl WindowManagerState for DecoOneState {
 
     /// Return a list of the window handles
     /// in rendering order.
-    fn handles(&self) -> Vec<WinHandle> {
+    fn handles_render(&self) -> Vec<WinHandle> {
         self.order.clone()
     }
 
@@ -641,6 +657,41 @@ impl WindowManagerState for DecoOneState {
         } else {
             None
         }
+    }
+
+    /// Translate a window area to screen coordinates and
+    /// clips the area.
+    fn win_area_to_screen(&self, area: Rect) -> Rect {
+        // shift + clip 0
+        let mut top = (area.top() + self.area.top()).saturating_sub(self.offset.y);
+        let mut left = (area.left() + self.area.left()).saturating_sub(self.offset.x);
+        let mut bottom = (area.bottom() + self.area.top()).saturating_sub(self.offset.y);
+        let mut right = (area.right() + self.area.left()).saturating_sub(self.offset.x);
+
+        // clip 1
+        if top < self.area.top() {
+            top = self.area.top();
+        } else if top > self.area.bottom() {
+            top = self.area.bottom();
+        }
+        if left < self.area.left() {
+            left = self.area.left();
+        } else if left > self.area.right() {
+            left = self.area.right();
+        }
+        if bottom > self.area.bottom() {
+            bottom = self.area.bottom();
+        } else if bottom < self.area.top() {
+            bottom = self.area.top();
+        }
+        if right > self.area.right() {
+            right = self.area.right();
+        } else if right < self.area.left() {
+            right = self.area.left();
+        }
+
+        // construct
+        Rect::new(left, top, right - left, bottom - top)
     }
 }
 
@@ -1317,13 +1368,13 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
                 let pos = Position::new(*x, *y);
                 if let Some(handle) = self.window_at(pos) {
                     // to front
-                    let r0 = self.window_to_front(handle).into();
+                    // let r0 = self.window_to_front(handle).into();
                     // focus window
                     // let r1 = self.focus_window(handle).into();
                     // initiate drag
                     let r2 = self.initiate_drag(handle, pos).into();
 
-                    max(r0, r2)
+                    r2
                 } else {
                     Outcome::Continue
                 }

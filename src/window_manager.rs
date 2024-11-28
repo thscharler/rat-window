@@ -117,21 +117,9 @@ pub trait WindowManagerState {
     /// Area for the window's content.
     fn window_widget_area(&self, handle: WinHandle) -> Rect;
 
-    // /// Is the window focused?
-    // fn is_focused_window(&self, handle: WinHandle) -> bool;
-    //
-    // /// Handle of the focused window.
-    // fn focused_window(&self) -> Option<WinHandle>;
-    //
-    // /// Focus the top window.
-    // fn focus_top_window(&mut self) -> bool;
-    //
-    // /// Focus the given window.
-    // fn focus_window(&mut self, handle: WinHandle) -> bool;
-
     /// Return a list of the window handles
     /// in rendering order.
-    fn handles(&self) -> Vec<WinHandle>;
+    fn handles_render(&self) -> Vec<WinHandle>;
 
     /// Move the focused window to front.
     fn focus_to_front(&mut self) -> bool;
@@ -155,6 +143,10 @@ pub trait WindowManagerState {
 
     /// Translate window coordinates to screen coordinates
     fn win_to_screen(&self, pos: Position) -> Option<Position>;
+
+    /// Translate a window area to screen coordinates and
+    /// clips the area.
+    fn win_area_to_screen(&self, area: Rect) -> Rect;
 }
 
 /// Relocate mouse events to window coordinates.
@@ -197,7 +189,7 @@ where
     state.rc.manager.borrow_mut().set_offset(windows.offset);
     state.rc.manager.borrow_mut().set_area(area);
 
-    let handles = state.rc.manager.borrow().handles();
+    let handles = state.rc.manager.borrow().handles_render();
     for handle in handles {
         state.run_for_window(handle, &mut |window, window_state| {
             windows

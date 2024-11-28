@@ -1,9 +1,8 @@
 use crate::window_manager::{WindowManager, WindowManagerState};
 use crate::{DecoOne, WinFlags};
-use rat_focus::{ContainerFlag, FocusBuilder, FocusContainer, FocusFlag, HasFocus, Navigation};
 use ratatui::layout::{Position, Rect};
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::rc::Rc;
@@ -11,7 +10,7 @@ use std::rc::Rc;
 ///
 /// Handle for a window.
 ///
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct WinHandle(usize);
 
 #[derive(Debug)]
@@ -84,8 +83,8 @@ where
     /// Handles
     max_handle: Cell<usize>,
     /// The windows themselves.
-    windows: RefCell<HashMap<WinHandle, Rc<RefCell<T>>>>,
-    window_states: RefCell<HashMap<WinHandle, Rc<RefCell<S>>>>,
+    windows: RefCell<BTreeMap<WinHandle, Rc<RefCell<T>>>>,
+    window_states: RefCell<BTreeMap<WinHandle, Rc<RefCell<S>>>>,
     /// Window closed during some operation.
     closed_windows: RefCell<HashSet<WinHandle>>,
 }
@@ -186,8 +185,13 @@ where
     }
 
     /// List of all windows in rendering order.
-    pub fn handles(&self) -> Vec<WinHandle> {
-        self.rc.manager.borrow().handles().into()
+    pub fn handles_render(&self) -> Vec<WinHandle> {
+        self.rc.manager.borrow().handles_render().into()
+    }
+
+    /// List of all windows in creation order.
+    pub fn handles_create(&self) -> Vec<WinHandle> {
+        self.rc.windows.borrow().keys().copied().collect()
     }
 
     /// Window at the given __screen__ coordinates.

@@ -114,7 +114,7 @@ where
     Error: 'static + Send,
 {
     fn init(&mut self, ctx: &mut AppContext<'_, Global, Message, Error>) -> Result<(), Error> {
-        for handle in self.handles().into_iter().rev() {
+        for handle in self.handles_render().into_iter().rev() {
             self.run_for_window(handle, &mut |_window, window_state| window_state.init(ctx))?;
         }
         Ok(())
@@ -125,7 +125,7 @@ where
         event: &TimeOut,
         ctx: &mut AppContext<'_, Global, Message, Error>,
     ) -> Result<Control<Message>, Error> {
-        for handle in self.handles().into_iter().rev() {
+        for handle in self.handles_render().into_iter().rev() {
             let r = self.run_for_window(handle, &mut |_window, window_state| {
                 window_state.timer(event, ctx)
             });
@@ -157,7 +157,7 @@ where
         // forward to all windows
         let r1 = if !r0.is_consumed() {
             'f: {
-                for handle in self.handles().into_iter().rev() {
+                for handle in self.handles_render().into_iter().rev() {
                     let r = self.run_for_window(handle, &mut |_window, window_state| {
                         window_state.crossterm(relocated, ctx)
                     })?;
@@ -179,7 +179,7 @@ where
         event: &mut Message,
         ctx: &mut AppContext<'_, Global, Message, Error>,
     ) -> Result<Control<Message>, Error> {
-        for handle in self.handles().into_iter().rev() {
+        for handle in self.handles_render().into_iter().rev() {
             let r = self.run_for_window(handle, &mut |_window, window_state| {
                 window_state.message(event, ctx)
             });
