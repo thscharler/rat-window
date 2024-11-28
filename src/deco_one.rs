@@ -588,6 +588,16 @@ impl WindowManagerState for DecoOneState {
 
     /// Move the focused window to front.
     fn focus_to_front(&mut self) -> bool {
+        // quick check
+        if let Some(last) = self.order.last() {
+            if let Some(last) = self.meta.get(last) {
+                if last.container.get() {
+                    return true;
+                }
+            }
+        }
+
+        // iterate and find focused
         let mut new_front = None;
         for (handle, meta) in self.meta.iter() {
             if meta.container.get() {
@@ -856,7 +866,22 @@ impl DecoOneState {
                 area_win.height,
             ),
         ));
-        // 'b': alt left 2
+        // 'b': same as left
+        self.snap_areas.push((
+            vec![Rect::new(
+                area_win.x + 1,
+                area_win.y + h_clip,
+                1,
+                area_win.height - 2 * h_clip,
+            )],
+            Rect::new(
+                area_win.x,
+                area_win.y,
+                area_win.width * 5 / 10,
+                area_win.height,
+            ),
+        ));
+        // 'c': alt left 2
         self.snap_areas.push((
             vec![Rect::new(
                 area_win.x,
@@ -871,7 +896,7 @@ impl DecoOneState {
                 area_win.height,
             ),
         ));
-        // 'c': alt right
+        // 'd': alt right
         self.snap_areas.push((
             vec![Rect::new(
                 (area_win.x + area_win.width).saturating_sub(3),
@@ -886,7 +911,22 @@ impl DecoOneState {
                 area_win.height,
             ),
         ));
-        // 'd': alt right 2
+        // 'e': same as right
+        self.snap_areas.push((
+            vec![Rect::new(
+                (area_win.x + area_win.width).saturating_sub(2),
+                area_win.y + h_clip,
+                1,
+                area_win.height - 2 * h_clip,
+            )],
+            Rect::new(
+                area_win.x + area_win.width * 5 / 10,
+                area_win.y,
+                area_win.width - area_win.width * 5 / 10,
+                area_win.height,
+            ),
+        ));
+        // 'f': alt right 2
         self.snap_areas.push((
             vec![Rect::new(
                 (area_win.x + area_win.width).saturating_sub(1),
@@ -901,7 +941,7 @@ impl DecoOneState {
                 area_win.height,
             ),
         ));
-        // 'e' or '0'==last: full area
+        // 'g' or '0'==last: full area
         self.snap_areas.push((Vec::default(), self.area_win));
     }
 
@@ -1295,6 +1335,7 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
     fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> Outcome {
         let mut r = Outcome::Continue;
 
+        ///
         self.focus_to_front();
 
         if self.container.get() {
