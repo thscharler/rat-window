@@ -99,7 +99,7 @@ fn handle_windows(
             let mut minwin_state = MinWinState::new();
             minwin_state.set_fill(cstr);
 
-            let handle = state.win.open_window((minwin.into(), minwin_state.into()));
+            let handle = state.win.open_window(minwin.into(), minwin_state.into());
             state.win.set_window_area(handle, Rect::new(10, 10, 15, 20));
 
             Outcome::Changed
@@ -108,7 +108,7 @@ fn handle_windows(
             let maxwin = MaxWin;
             let maxwin_state = MaxWinState::new(state.win.clone());
 
-            let handle = state.win.open_window((maxwin.into(), maxwin_state.into()));
+            let handle = state.win.open_window(maxwin.into(), maxwin_state.into());
             state.win.set_window_area(handle, Rect::new(10, 10, 20, 15));
 
             Outcome::Changed

@@ -632,7 +632,7 @@ pub mod turbo {
                             let handle = ctx
                                 .g
                                 .win
-                                .open_window((TurboEditor::new_rc(), TurboEditorState::new_rc()));
+                                .open_window(TurboEditor::new_rc(), TurboEditorState::new_rc());
                             ctx.g.win.set_window_area(handle, Rect::new(0, 0, 60, 15));
                             ctx.g.win.window_to_front(handle);
                             Control::Changed
@@ -675,7 +675,6 @@ pub mod turbo_editor {
     use crate::message::TurboMsg;
     use anyhow::Error;
     use crossterm::event::Event;
-    use log::debug;
     use rat_event::{HandleEvent, Regular};
     use rat_focus::{FocusBuilder, FocusContainer};
     use rat_salsa::{AppContext, AppState, AppWidget, Control, RenderContext};
@@ -737,8 +736,6 @@ pub mod turbo_editor {
 
     impl FocusContainer for TurboEditorState {
         fn build(&self, builder: &mut FocusBuilder) {
-            debug!("add TurboEditor");
-            debug!("what is {:#?}", builder);
             builder.widget(&self.editor);
         }
     }

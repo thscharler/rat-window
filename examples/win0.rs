@@ -2,15 +2,13 @@ use crate::max_win::{MaxWin, MaxWinState};
 use crate::min_win::{MinWin, MinWinState};
 use crate::mini_salsa::theme::THEME;
 use crate::mini_salsa::{run_ui, setup_logging, MiniSalsaState};
-use log::debug;
 use rat_event::{ct_event, ConsumedEvent, HandleEvent, Outcome, Regular};
-use rat_focus::{FocusBuilder, FocusContainer};
+use rat_focus::{Focus, FocusBuilder, FocusContainer};
 use rat_window::{DecoOne, DecoOneState, WinFlags, WinState, WinWidget, Windows, WindowsState};
 use ratatui::layout::{Alignment, Constraint, Layout, Position, Rect};
 use ratatui::widgets::{Block, BorderType, StatefulWidget};
 use ratatui::Frame;
 use std::cmp::max;
-use std::ops::DerefMut;
 
 mod mini_salsa;
 
@@ -20,6 +18,7 @@ fn main() -> Result<(), anyhow::Error> {
     let mut data = Data {};
 
     let mut state = State {
+        focus: None,
         win: WindowsState::new(DecoOneState::new()),
     };
 
@@ -35,6 +34,7 @@ fn main() -> Result<(), anyhow::Error> {
 struct Data {}
 
 struct State {
+    focus: Option<Focus>,
     win: WindowsState<dyn WinWidget<State = dyn WinState>, dyn WinState, DecoOne>,
 }
 
@@ -85,25 +85,25 @@ fn handle_windows(
     _istate: &mut MiniSalsaState,
     state: &mut State,
 ) -> Result<Outcome, anyhow::Error> {
-    let mut b = FocusBuilder::new(None).enable_log();
-    b.container(state);
-    let mut focus = b.build();
-    // focus.enable_log();
+    // build focus
+    let old_focus = state.focus.take();
+    let mut focus = FocusBuilder::rebuild(state, old_focus);
+
     let f = focus.handle(event, Regular);
 
-    let fd = focus.clone_destruct();
-    debug!("{:#?}", fd);
-    for handle in state.win.handles_render() {
-        let win_state = state.win.window_state(handle);
-        let mut win_state = win_state.borrow_mut();
-        if let Some(minwin) = win_state.deref_mut().downcast_mut::<MinWinState>() {
-            minwin.focus_flags = fd.0.clone();
-            minwin.areas = fd.1.clone();
-            minwin.z_rects = fd.2.clone();
-            minwin.navigations = fd.3.clone();
-            minwin.containers = fd.4.clone();
-        }
-    }
+    // let fd = focus.clone_destruct();
+    // debug!("{:#?}", fd);
+    // for handle in state.win.handles_render() {
+    //     let win_state = state.win.window_state(handle);
+    //     let mut win_state = win_state.borrow_mut();
+    //     if let Some(minwin) = win_state.deref_mut().downcast_mut::<MinWinState>() {
+    //         minwin.focus_flags = fd.0.clone();
+    //         minwin.areas = fd.1.clone();
+    //         minwin.z_rects = fd.2.clone();
+    //         minwin.navigations = fd.3.clone();
+    //         minwin.containers = fd.4.clone();
+    //     }
+    // }
 
     let r = match event {
         ct_event!(keycode press F(2)) => {
@@ -120,7 +120,7 @@ fn handle_windows(
                 win: Default::default(),
             };
 
-            let handle = state.win.open_window((minwin.into(), minwin_state.into()));
+            let handle = state.win.open_window(minwin.into(), minwin_state.into());
             state.win.set_window_area(handle, Rect::new(10, 10, 15, 20));
             state.win.set_window_flags(
                 handle,
@@ -142,7 +142,7 @@ fn handle_windows(
             let maxwin = MaxWin;
             let maxwin_state = MaxWinState::new(state.win.clone());
 
-            let handle = state.win.open_window((maxwin.into(), maxwin_state.into()));
+            let handle = state.win.open_window(maxwin.into(), maxwin_state.into());
             state.win.set_window_area(handle, Rect::new(10, 10, 20, 15));
             state.win.set_window_flags(
                 handle,
@@ -184,7 +184,7 @@ pub mod min_win {
     use rat_window::{fill_buffer, WinFlags, WinHandle, WinState, WinWidget};
     use ratatui::buffer::Buffer;
     use ratatui::layout::Rect;
-    use ratatui::text::{Line, Span};
+    use ratatui::text::Span;
     use ratatui::widgets::Widget;
     use std::cell::RefCell;
     use std::ops::Range;
