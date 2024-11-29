@@ -35,6 +35,14 @@ where
     pub _phantom: PhantomData<&'a S>,
 }
 
+/// Windows state.
+///
+/// This is the cheap to clone front. Uses a Rc<WindowStateRc> which holds
+/// the actual data.
+///
+/// This implements window management functions and gives access to the
+/// concrete window manager. This can simply be cloned and distributed
+/// where needed.
 pub struct WindowsState<T, S, M = DecoOne>
 where
     T: ?Sized + 'static,
@@ -71,6 +79,7 @@ where
     }
 }
 
+/// Concrete Windows state behind the Rc.
 pub struct WindowsStateRc<T, S, M = DecoOne>
 where
     T: ?Sized + 'static,
@@ -222,12 +231,12 @@ where
     /// - [self.set_window_area] to set an actual area for the window.
     /// - [self.set_window_flags] to change the appearance and behaviour.
     ///
-    pub fn open_window(&self, window: (Rc<RefCell<T>>, Rc<RefCell<S>>)) -> WinHandle {
+    pub fn open_window(&self, window: Rc<RefCell<T>>, state: Rc<RefCell<S>>) -> WinHandle {
         let handle = self.new_handle();
 
         self.rc.manager.borrow_mut().insert_window(handle);
-        self.rc.windows.borrow_mut().insert(handle, window.0);
-        self.rc.window_states.borrow_mut().insert(handle, window.1);
+        self.rc.windows.borrow_mut().insert(handle, window);
+        self.rc.window_states.borrow_mut().insert(handle, state);
 
         handle
     }
