@@ -145,7 +145,7 @@ fn handle_windows(
         _ => Outcome::Continue,
     };
 
-    let r = r.or_else(|| state.win.handle(event, Regular));
+    let r = r.or_else(|| state.win.handle(event, Regular).into());
 
     Ok(max(f, r))
 }
@@ -165,6 +165,7 @@ pub mod min_win {
     use log::debug;
     use rat_event::{ct_event, HandleEvent, Outcome, Regular};
     use rat_focus::{ContainerFlag, FocusBuilder, FocusContainer, FocusFlag, Navigation, ZRect};
+    use rat_window::event::WindowsOutcome;
     use rat_window::{
         fill_buffer, relocate_event, render_windows, DecoOne, DecoOneState, WinFlags, WinHandle,
         WindowManagerState, Windows, WindowsState,
@@ -350,14 +351,22 @@ pub mod min_win {
         }
     }
 
-    impl HandleEvent<crossterm::event::Event, Regular, Outcome> for MinWindowsState {
-        fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> Outcome {
+    impl HandleEvent<crossterm::event::Event, Regular, WindowsOutcome> for MinWindowsState {
+        fn handle(
+            &mut self,
+            event: &crossterm::event::Event,
+            _qualifier: Regular,
+        ) -> WindowsOutcome {
             let Some(event) = relocate_event(self.rc.manager.borrow().deref(), event) else {
-                return Outcome::Continue;
+                return WindowsOutcome::Continue;
             };
 
             // forward to window-manager
-            self.rc.manager.borrow_mut().handle(event.as_ref(), Regular)
+            self.rc
+                .manager
+                .borrow_mut()
+                .handle(event.as_ref(), Regular)
+                .into()
         }
     }
 }

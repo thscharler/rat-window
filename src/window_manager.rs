@@ -6,7 +6,11 @@ use std::borrow::Cow;
 use std::ops::DerefMut;
 
 pub trait WindowManager {
+    /// State struct
     type State: WindowManagerState;
+
+    /// Outcome type from event handling.
+    type Outcome;
 
     /// Run calculations based on the currently set windows area and offset.
     fn render_init(&self, state: &mut Self::State);

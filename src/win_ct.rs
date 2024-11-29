@@ -1,3 +1,4 @@
+use crate::event::WindowsOutcome;
 use crate::window_manager::{relocate_event, WindowManager};
 use crate::{render_windows, WindowManagerState, Windows, WindowsState};
 use rat_event::{ConsumedEvent, HandleEvent, Outcome, Regular};
@@ -84,16 +85,17 @@ where
     }
 }
 
-impl<T, M> HandleEvent<crossterm::event::Event, Regular, Outcome>
+impl<T, M> HandleEvent<crossterm::event::Event, Regular, WindowsOutcome>
     for WindowsState<T, dyn WinCtState, M>
 where
     T: WinCtWidget + ?Sized + 'static,
+    M::Outcome: ConsumedEvent + Into<WindowsOutcome>,
     M: WindowManager + Debug,
-    M::State: HandleEvent<crossterm::event::Event, Regular, Outcome> + Debug,
+    M::State: HandleEvent<crossterm::event::Event, Regular, M::Outcome> + Debug,
 {
-    fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> Outcome {
+    fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> WindowsOutcome {
         let Some(relocated) = relocate_event(self.rc.manager.borrow().deref(), event) else {
-            return Outcome::Continue;
+            return WindowsOutcome::Continue;
         };
 
         // Special action for focus.
@@ -104,7 +106,8 @@ where
             .rc
             .manager
             .borrow_mut()
-            .handle(relocated.as_ref(), Regular);
+            .handle(relocated.as_ref(), Regular)
+            .into();
 
         let r = r.or_else(|| {
             // forward to all windows
@@ -114,10 +117,10 @@ where
                         window_state.handle(relocated.as_ref(), Regular)
                     });
                     if r.is_consumed() {
-                        break 'f r;
+                        break 'f r.into();
                     }
                 }
-                Outcome::Continue
+                WindowsOutcome::Continue
             }
         });
 

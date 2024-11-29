@@ -1,3 +1,4 @@
+use crate::event::WindowsOutcome;
 use crate::{
     relocate_event, render_windows, WindowManager, WindowManagerState, Windows, WindowsState,
 };
@@ -76,7 +77,8 @@ where
     Message: 'static + Send,
     Error: 'static + Send,
     M: WindowManager + Debug,
-    M::State: HandleEvent<crossterm::event::Event, Regular, Outcome>,
+    M::Outcome: ConsumedEvent + Into<Outcome>,
+    M::State: HandleEvent<crossterm::event::Event, Regular, M::Outcome>,
 {
     type State = WindowsState<
         dyn WinSalsaWidget<Global, Message, Error>,
@@ -111,7 +113,8 @@ impl<Global, Message, Error, M> AppState<Global, Message, Error>
     >
 where
     M: WindowManager,
-    M::State: HandleEvent<crossterm::event::Event, Regular, Outcome>,
+    M::Outcome: ConsumedEvent + Into<Outcome>,
+    M::State: HandleEvent<crossterm::event::Event, Regular, M::Outcome>,
     Message: 'static + Send,
     Error: 'static + Send,
 {
@@ -157,7 +160,8 @@ where
             .manager
             .borrow_mut()
             .deref_mut()
-            .handle(relocated, Regular);
+            .handle(relocated, Regular)
+            .into();
 
         // forward to all windows
         let r1 = if !r0.is_consumed() {

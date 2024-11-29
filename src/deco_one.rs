@@ -1,3 +1,4 @@
+use crate::event::WindowsOutcome;
 use crate::util::revert_style;
 use crate::window_manager::{WindowManager, WindowManagerState};
 use crate::{WinFlags, WinHandle, WindowFrame};
@@ -167,6 +168,7 @@ impl DecoOne {
 
 impl WindowManager for DecoOne {
     type State = DecoOneState;
+    type Outcome = DecoOneOutcome;
 
     /// Run preparations before rendering any window.
     fn render_init(&self, state: &mut Self::State) {
@@ -1043,7 +1045,7 @@ impl DecoOneState {
 
 impl DecoOneState {
     /// Start dragging.
-    fn initiate_drag(&mut self, handle: WinHandle, pos: Position) -> bool {
+    fn initiate_drag(&mut self, handle: WinHandle, pos: Position) -> DecoOneOutcome {
         if let Some(meta) = self.meta.get(&handle) {
             if meta.move_area.contains(pos) {
                 self.drag = Some(Drag::new_move(
@@ -1055,55 +1057,55 @@ impl DecoOneState {
                         (pos.x - meta.move_area.x, pos.y - meta.move_area.y).into()
                     },
                 ));
-                true
+                DecoOneOutcome::Moving(handle)
             } else if meta.resize_right_area.contains(pos) {
                 self.drag = Some(Drag::new_resize(
                     handle,
                     meta.snapped_to,
                     DragAction::ResizeRight,
                 ));
-                true
+                DecoOneOutcome::Resizing(handle)
             } else if meta.resize_bottom_right_area.contains(pos) {
                 self.drag = Some(Drag::new_resize(
                     handle,
                     meta.snapped_to,
                     DragAction::ResizeBottomRight,
                 ));
-                true
+                DecoOneOutcome::Resizing(handle)
             } else if meta.resize_bottom_area.contains(pos) {
                 self.drag = Some(Drag::new_resize(
                     handle,
                     meta.snapped_to,
                     DragAction::ResizeBottom,
                 ));
-                true
+                DecoOneOutcome::Resizing(handle)
             } else if meta.resize_bottom_left_area.contains(pos) {
                 self.drag = Some(Drag::new_resize(
                     handle,
                     meta.snapped_to,
                     DragAction::ResizeBottomLeft,
                 ));
-                true
+                DecoOneOutcome::Resizing(handle)
             } else if meta.resize_left_area.contains(pos) {
                 self.drag = Some(Drag::new_resize(
                     handle,
                     meta.snapped_to,
                     DragAction::ResizeLeft,
                 ));
-                true
+                DecoOneOutcome::Resizing(handle)
             } else {
-                false
+                DecoOneOutcome::Continue
             }
         } else {
-            false
+            DecoOneOutcome::Continue
         }
     }
 
     /// Updates during drag.
     #[inline]
-    fn update_drag(&mut self, pos: Position) -> bool {
+    fn update_drag(&mut self, pos: Position) -> DecoOneOutcome {
         let Some(drag) = &self.drag else {
-            return false;
+            return DecoOneOutcome::Continue;
         };
 
         let max_x = (self.offset.x + self.area_win.width).saturating_sub(1);
@@ -1134,65 +1136,85 @@ impl DecoOneState {
         meta.snapped_to = snap;
         meta.window_area = new;
 
-        true
+        match drag.action {
+            DragAction::Move => DecoOneOutcome::Moving(drag.handle),
+            DragAction::ResizeLeft
+            | DragAction::ResizeRight
+            | DragAction::ResizeBottomLeft
+            | DragAction::ResizeBottom
+            | DragAction::ResizeBottomRight => DecoOneOutcome::Resizing(drag.handle),
+        }
     }
 
     /// Finished drag.
     #[inline]
-    fn commit_drag(&mut self) -> bool {
+    fn commit_drag(&mut self) -> DecoOneOutcome {
         let Some(drag) = &self.drag else {
-            return false;
+            return DecoOneOutcome::Continue;
         };
 
         let meta = self.meta.get_mut(&drag.handle).expect("window");
-        match drag.action {
+
+        let handle = drag.handle;
+        let action = drag.action;
+        self.drag = None;
+
+        match action {
             DragAction::Move => {
                 if meta.snapped_to.is_none() {
                     meta.base_size = meta.window_area;
                 }
+                DecoOneOutcome::Moved(handle)
             }
             _ => {
                 meta.snapped_to = None;
                 meta.base_size = meta.window_area;
+                DecoOneOutcome::Resized(handle)
             }
         }
-
-        self.drag = None;
-        true
     }
 
     /// Cancel drag.
     #[inline]
-    fn cancel_drag(&mut self) -> bool {
+    fn cancel_drag(&mut self) -> DecoOneOutcome {
         let Some(drag) = &self.drag else {
-            return false;
+            return DecoOneOutcome::Continue;
         };
 
         let meta = self.meta.get_mut(&drag.handle).expect("window");
         meta.snapped_to = drag.base_snap;
         meta.window_area = meta.base_size;
 
+        let handle = drag.handle;
+        let action = drag.action;
         self.drag = None;
-        true
+
+        match action {
+            DragAction::Move => DecoOneOutcome::Moved(handle),
+            DragAction::ResizeLeft
+            | DragAction::ResizeRight
+            | DragAction::ResizeBottomLeft
+            | DragAction::ResizeBottom
+            | DragAction::ResizeBottomRight => DecoOneOutcome::Resized(handle),
+        }
     }
 
     /// Flip maximized state.
     #[inline]
-    fn flip_maximize(&mut self, handle: WinHandle, pos: Position) -> bool {
+    fn flip_maximize(&mut self, handle: WinHandle, pos: Position) -> DecoOneOutcome {
         if let Some(meta) = self.meta.get_mut(&handle) {
             if meta.move_area.contains(pos) && !self.snap_areas.is_empty() {
                 self.snap_to(handle, self.snap_areas.len().saturating_sub(1))
-                    .into()
             } else {
-                false
+                DecoOneOutcome::Continue
             }
         } else {
-            false
+            DecoOneOutcome::Continue
         }
     }
 
     /// Snap a window to the given area.
-    fn snap_to(&mut self, handle: WinHandle, snap_idx: usize) -> bool {
+    fn snap_to(&mut self, handle: WinHandle, snap_idx: usize) -> DecoOneOutcome {
         let Some(meta) = self.meta.get_mut(&handle) else {
             panic!("invalid handle");
         };
@@ -1205,53 +1227,53 @@ impl DecoOneState {
                 meta.snapped_to = Some(snap_idx);
                 meta.window_area = self.snap_areas[snap_idx].1;
             }
-            true
+            DecoOneOutcome::Snap(handle, snap_idx)
         } else {
-            false
+            DecoOneOutcome::Continue
         }
     }
 
-    fn move_up(&mut self, handle: WinHandle) -> bool {
+    fn move_up(&mut self, handle: WinHandle) -> DecoOneOutcome {
         let Some(meta) = self.meta.get_mut(&handle) else {
             panic!("invalid handle");
         };
         meta.snapped_to = None;
         meta.window_area.y = meta.window_area.y.saturating_sub(1);
         meta.base_size = meta.window_area;
-        true
+        DecoOneOutcome::Moved(handle)
     }
 
-    fn move_down(&mut self, handle: WinHandle) -> bool {
+    fn move_down(&mut self, handle: WinHandle) -> DecoOneOutcome {
         let Some(meta) = self.meta.get_mut(&handle) else {
             panic!("invalid handle");
         };
         meta.snapped_to = None;
         meta.window_area.y = meta.window_area.y.saturating_add(1);
         meta.base_size = meta.window_area;
-        true
+        DecoOneOutcome::Moved(handle)
     }
 
-    fn move_left(&mut self, handle: WinHandle) -> bool {
+    fn move_left(&mut self, handle: WinHandle) -> DecoOneOutcome {
         let Some(meta) = self.meta.get_mut(&handle) else {
             panic!("invalid handle");
         };
         meta.snapped_to = None;
         meta.window_area.x = meta.window_area.x.saturating_sub(1);
         meta.base_size = meta.window_area;
-        true
+        DecoOneOutcome::Moved(handle)
     }
 
-    fn move_right(&mut self, handle: WinHandle) -> bool {
+    fn move_right(&mut self, handle: WinHandle) -> DecoOneOutcome {
         let Some(meta) = self.meta.get_mut(&handle) else {
             panic!("invalid handle");
         };
         meta.snapped_to = None;
         meta.window_area.x = meta.window_area.x.saturating_add(1);
         meta.base_size = meta.window_area;
-        true
+        DecoOneOutcome::Moved(handle)
     }
 
-    fn resize_top(&mut self, handle: WinHandle, by: i16) -> bool {
+    fn resize_top(&mut self, handle: WinHandle, by: i16) -> DecoOneOutcome {
         let Some(meta) = self.meta.get_mut(&handle) else {
             panic!("invalid handle");
         };
@@ -1259,20 +1281,20 @@ impl DecoOneState {
         meta.window_area.y = meta.window_area.y.saturating_add_signed(by.neg());
         meta.window_area.height = meta.window_area.height.saturating_add_signed(by);
         meta.base_size = meta.window_area;
-        true
+        DecoOneOutcome::Resized(handle)
     }
 
-    fn resize_bottom(&mut self, handle: WinHandle, by: i16) -> bool {
+    fn resize_bottom(&mut self, handle: WinHandle, by: i16) -> DecoOneOutcome {
         let Some(meta) = self.meta.get_mut(&handle) else {
             panic!("invalid handle");
         };
         meta.snapped_to = None;
         meta.window_area.height = meta.window_area.height.saturating_add_signed(by);
         meta.base_size = meta.window_area;
-        true
+        DecoOneOutcome::Resized(handle)
     }
 
-    fn resize_left(&mut self, handle: WinHandle, by: i16) -> bool {
+    fn resize_left(&mut self, handle: WinHandle, by: i16) -> DecoOneOutcome {
         let Some(meta) = self.meta.get_mut(&handle) else {
             panic!("invalid handle");
         };
@@ -1280,23 +1302,23 @@ impl DecoOneState {
         meta.window_area.x = meta.window_area.x.saturating_add_signed(by.neg());
         meta.window_area.width = meta.window_area.width.saturating_add_signed(by);
         meta.base_size = meta.window_area;
-        true
+        DecoOneOutcome::Resized(handle)
     }
 
-    fn resize_right(&mut self, handle: WinHandle, by: i16) -> bool {
+    fn resize_right(&mut self, handle: WinHandle, by: i16) -> DecoOneOutcome {
         let Some(meta) = self.meta.get_mut(&handle) else {
             panic!("invalid handle");
         };
         meta.snapped_to = None;
         meta.window_area.width = meta.window_area.width.saturating_add_signed(by);
         meta.base_size = meta.window_area;
-        true
+        DecoOneOutcome::Resized(handle)
     }
 }
 
-impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
-    fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> Outcome {
-        let mut r = Outcome::Continue;
+impl HandleEvent<crossterm::event::Event, Regular, DecoOneOutcome> for DecoOneState {
+    fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> DecoOneOutcome {
+        let mut r = DecoOneOutcome::Continue;
 
         if self.container.get() {
             r = r.or_else(|| match event {
@@ -1305,48 +1327,42 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
                         KeyboardMode::Regular => KeyboardMode::Meta,
                         KeyboardMode::Meta => KeyboardMode::Regular,
                     };
-                    Outcome::Changed
+                    DecoOneOutcome::Changed
                 }
-                _ => Outcome::Continue,
+                _ => DecoOneOutcome::Continue,
             });
         }
         if self.mode == KeyboardMode::Meta && self.container.get() {
             if let Some(handle) = self.focused_window() {
                 r = r.or_else(|| match event {
-                    ct_event!(key press '0') => self
-                        .snap_to(handle, self.snap_areas.len().saturating_sub(1))
-                        .into(),
+                    ct_event!(key press '0') => {
+                        self.snap_to(handle, self.snap_areas.len().saturating_sub(1))
+                    }
                     ct_event!(key press f@'1'..='9') => {
                         let snap_idx = *f as usize - '1' as usize;
-                        self.snap_to(handle, snap_idx).into()
+                        self.snap_to(handle, snap_idx)
                     }
                     ct_event!(key press f@'a'..='z') => {
                         let snap_idx = (*f as usize - 'a' as usize) + 9;
-                        self.snap_to(handle, snap_idx).into()
+                        self.snap_to(handle, snap_idx)
                     }
 
-                    ct_event!(keycode press Up) => self.move_up(handle).into(),
-                    ct_event!(keycode press CONTROL_SHIFT-Up) => self.resize_top(handle, 1).into(),
-                    ct_event!(keycode press CONTROL_SHIFT-Down) => {
-                        self.resize_top(handle, -1).into()
-                    }
+                    ct_event!(keycode press Up) => self.move_up(handle),
+                    ct_event!(keycode press CONTROL_SHIFT-Up) => self.resize_top(handle, 1),
+                    ct_event!(keycode press CONTROL_SHIFT-Down) => self.resize_top(handle, -1),
 
-                    ct_event!(keycode press Down) => self.move_down(handle).into(),
-                    ct_event!(keycode press CONTROL-Down) => self.resize_bottom(handle, 1).into(),
-                    ct_event!(keycode press CONTROL-Up) => self.resize_bottom(handle, -1).into(),
+                    ct_event!(keycode press Down) => self.move_down(handle),
+                    ct_event!(keycode press CONTROL-Down) => self.resize_bottom(handle, 1),
+                    ct_event!(keycode press CONTROL-Up) => self.resize_bottom(handle, -1),
 
-                    ct_event!(keycode press Left) => self.move_left(handle).into(),
-                    ct_event!(keycode press CONTROL_SHIFT-Left) => {
-                        self.resize_left(handle, 1).into()
-                    }
-                    ct_event!(keycode press CONTROL_SHIFT-Right) => {
-                        self.resize_left(handle, -1).into()
-                    }
-                    ct_event!(keycode press Right) => self.move_right(handle).into(),
-                    ct_event!(keycode press CONTROL-Left) => self.resize_right(handle, -1).into(),
-                    ct_event!(keycode press CONTROL-Right) => self.resize_right(handle, 1).into(),
+                    ct_event!(keycode press Left) => self.move_left(handle),
+                    ct_event!(keycode press CONTROL_SHIFT-Left) => self.resize_left(handle, 1),
+                    ct_event!(keycode press CONTROL_SHIFT-Right) => self.resize_left(handle, -1),
+                    ct_event!(keycode press Right) => self.move_right(handle),
+                    ct_event!(keycode press CONTROL-Left) => self.resize_right(handle, -1),
+                    ct_event!(keycode press CONTROL-Right) => self.resize_right(handle, 1),
 
-                    _ => Outcome::Continue,
+                    _ => DecoOneOutcome::Continue,
                 });
             }
         }
@@ -1368,6 +1384,18 @@ pub enum DecoOneOutcome {
     /// Further processing for this event may stop.
     /// Rendering the ui is advised.
     Changed,
+    /// Snap to a region occurred.
+    Snap(WinHandle, usize),
+    /// Moved to front.
+    ToFront(WinHandle),
+    /// Currently moving.
+    Moving(WinHandle),
+    /// Moved
+    Moved(WinHandle),
+    /// Currently resizing.
+    Resizing(WinHandle),
+    /// Resized
+    Resized(WinHandle),
 }
 
 impl ConsumedEvent for DecoOneOutcome {
@@ -1387,34 +1415,70 @@ impl From<bool> for DecoOneOutcome {
     }
 }
 
-impl HandleEvent<crossterm::event::Event, MouseOnly, Outcome> for DecoOneState {
-    fn handle(&mut self, event: &crossterm::event::Event, _qualifier: MouseOnly) -> Outcome {
-        let mut r = Outcome::Continue;
+impl From<DecoOneOutcome> for Outcome {
+    fn from(value: DecoOneOutcome) -> Self {
+        match value {
+            DecoOneOutcome::Continue => Outcome::Continue,
+            DecoOneOutcome::Unchanged => Outcome::Unchanged,
+            DecoOneOutcome::Changed => Outcome::Changed,
+            DecoOneOutcome::Snap(_, _) => Outcome::Changed,
+            DecoOneOutcome::ToFront(_) => Outcome::Changed,
+            DecoOneOutcome::Moving(_) => Outcome::Changed,
+            DecoOneOutcome::Moved(_) => Outcome::Changed,
+            DecoOneOutcome::Resizing(_) => Outcome::Changed,
+            DecoOneOutcome::Resized(_) => Outcome::Changed,
+        }
+    }
+}
+
+impl From<DecoOneOutcome> for WindowsOutcome {
+    fn from(value: DecoOneOutcome) -> Self {
+        match value {
+            DecoOneOutcome::Continue => WindowsOutcome::Continue,
+            DecoOneOutcome::Unchanged => WindowsOutcome::Unchanged,
+            DecoOneOutcome::Changed => WindowsOutcome::Changed,
+            DecoOneOutcome::Snap(h, i) => WindowsOutcome::Snap(h, i),
+            DecoOneOutcome::ToFront(h) => WindowsOutcome::ToFront(h),
+            DecoOneOutcome::Moving(h) => WindowsOutcome::Moving(h),
+            DecoOneOutcome::Moved(h) => WindowsOutcome::Moved(h),
+            DecoOneOutcome::Resizing(h) => WindowsOutcome::Resizing(h),
+            DecoOneOutcome::Resized(h) => WindowsOutcome::Resized(h),
+        }
+    }
+}
+
+impl HandleEvent<crossterm::event::Event, MouseOnly, DecoOneOutcome> for DecoOneState {
+    fn handle(&mut self, event: &crossterm::event::Event, _qualifier: MouseOnly) -> DecoOneOutcome {
+        let mut r = DecoOneOutcome::Continue;
 
         r = r.or_else(|| match event {
             ct_event!(mouse any for m) if self.mouse.doubleclick(self.area_win, m) => {
                 let pos = Position::new(m.column, m.row);
                 if let Some(handle) = self.window_at(pos) {
                     self.cancel_drag();
-                    self.flip_maximize(handle, pos).into()
+                    self.flip_maximize(handle, pos)
                 } else {
-                    Outcome::Continue
+                    DecoOneOutcome::Continue
                 }
             }
             ct_event!(mouse down Left for x,y) => {
                 let pos = Position::new(*x, *y);
                 if let Some(handle) = self.window_at(pos) {
-                    let r0 = self.window_to_front(handle).into();
+                    let r0 = if self.window_to_front(handle) {
+                        DecoOneOutcome::ToFront(handle)
+                    } else {
+                        DecoOneOutcome::Continue
+                    };
                     let r1 = self.initiate_drag(handle, pos).into();
                     max(r0, r1)
                 } else {
-                    Outcome::Continue
+                    DecoOneOutcome::Continue
                 }
             }
             ct_event!(mouse drag Left for x,y) => self.update_drag(Position::new(*x, *y)).into(),
             ct_event!(mouse up Left for _x,_y) => self.commit_drag().into(),
             ct_event!(mouse moved for _x,_y) => self.cancel_drag().into(), // reset drag on unknown
-            _ => Outcome::Continue,
+            _ => DecoOneOutcome::Continue,
         });
         r
     }
