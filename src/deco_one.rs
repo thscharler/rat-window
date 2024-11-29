@@ -2,7 +2,7 @@ use crate::util::revert_style;
 use crate::window_manager::{WindowManager, WindowManagerState};
 use crate::{WinFlags, WinHandle, WindowFrame};
 use rat_event::util::MouseFlags;
-use rat_event::{ct_event, ConsumedEvent, HandleEvent, Outcome, Regular};
+use rat_event::{ct_event, ConsumedEvent, HandleEvent, MouseOnly, Outcome, Regular};
 use rat_focus::{ContainerFlag, FocusFlag, HasFocus, Navigation, ZRect};
 use ratatui::buffer::{Buffer, Cell};
 use ratatui::layout::{Alignment, Position, Rect, Size};
@@ -10,6 +10,7 @@ use ratatui::prelude::BlockExt;
 use ratatui::style::Style;
 use ratatui::text::{Span, Text};
 use ratatui::widgets::{Block, Widget, WidgetRef};
+use std::cmp::max;
 use std::collections::HashMap;
 use std::mem;
 use std::ops::Neg;
@@ -426,6 +427,7 @@ impl WindowFrame for DecoOneFrame {
 }
 
 impl DecoOneFrame {
+    #[allow(dead_code)]
     fn new() -> Self {
         Self::default()
     }
@@ -619,6 +621,7 @@ impl WindowManagerState for DecoOneState {
     }
 
     /// Move a window to front.
+    #[inline]
     fn window_to_front(&mut self, handle: WinHandle) -> bool {
         if self.order.last() == Some(&handle) {
             false
@@ -635,6 +638,7 @@ impl WindowManagerState for DecoOneState {
     }
 
     /// Window at the given __window__ position.
+    #[inline]
     fn window_at(&self, pos: Position) -> Option<WinHandle> {
         for handle in self.order.iter().rev().copied() {
             let area = self.window_area(handle);
@@ -1096,9 +1100,10 @@ impl DecoOneState {
     }
 
     /// Updates during drag.
+    #[inline]
     fn update_drag(&mut self, pos: Position) -> bool {
         let Some(drag) = &self.drag else {
-            panic!("drag not active")
+            return false;
         };
 
         let max_x = (self.offset.x + self.area_win.width).saturating_sub(1);
@@ -1133,9 +1138,10 @@ impl DecoOneState {
     }
 
     /// Finished drag.
+    #[inline]
     fn commit_drag(&mut self) -> bool {
         let Some(drag) = &self.drag else {
-            panic!("drag not active")
+            return false;
         };
 
         let meta = self.meta.get_mut(&drag.handle).expect("window");
@@ -1156,9 +1162,10 @@ impl DecoOneState {
     }
 
     /// Cancel drag.
+    #[inline]
     fn cancel_drag(&mut self) -> bool {
         let Some(drag) = &self.drag else {
-            panic!("drag not active")
+            return false;
         };
 
         let meta = self.meta.get_mut(&drag.handle).expect("window");
@@ -1170,18 +1177,12 @@ impl DecoOneState {
     }
 
     /// Flip maximized state.
+    #[inline]
     fn flip_maximize(&mut self, handle: WinHandle, pos: Position) -> bool {
         if let Some(meta) = self.meta.get_mut(&handle) {
             if meta.move_area.contains(pos) && !self.snap_areas.is_empty() {
-                if meta.snapped_to.is_none() {
-                    meta.snapped_to = Some(self.snap_areas.len() - 1);
-                    meta.window_area = self.snap_areas[self.snap_areas.len() - 1].1;
-                } else {
-                    meta.snapped_to = None;
-                    meta.window_area = meta.base_size;
-                }
-                self.drag = None;
-                true
+                self.snap_to(handle, self.snap_areas.len().saturating_sub(1))
+                    .into()
             } else {
                 false
             }
@@ -1362,6 +1363,7 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
             ct_event!(mouse any for m) if self.mouse.doubleclick(self.area_win, m) => {
                 let pos = Position::new(m.column, m.row);
                 if let Some(handle) = self.window_at(pos) {
+                    self.cancel_drag();
                     self.flip_maximize(handle, pos).into()
                 } else {
                     Outcome::Continue
@@ -1370,41 +1372,16 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
             ct_event!(mouse down Left for x,y) => {
                 let pos = Position::new(*x, *y);
                 if let Some(handle) = self.window_at(pos) {
-                    // to front
-                    // let r0 = self.window_to_front(handle).into();
-                    // focus window
-                    // let r1 = self.focus_window(handle).into();
-                    // initiate drag
-                    let r2 = self.initiate_drag(handle, pos).into();
-
-                    r2
+                    let r0 = self.window_to_front(handle).into();
+                    let r1 = self.initiate_drag(handle, pos).into();
+                    max(r0, r1)
                 } else {
                     Outcome::Continue
                 }
             }
-            ct_event!(mouse drag Left for x,y) => {
-                if self.drag.is_some() {
-                    self.update_drag(Position::new(*x, *y)).into()
-                } else {
-                    Outcome::Continue
-                }
-            }
-            ct_event!(mouse up Left for _x,_y) => {
-                if self.drag.is_some() {
-                    self.commit_drag().into()
-                } else {
-                    Outcome::Continue
-                }
-            }
-            ct_event!(mouse moved for _x,_y) => {
-                // reset on fail otherwise
-                if self.drag.is_some() {
-                    self.cancel_drag().into()
-                } else {
-                    Outcome::Continue
-                }
-            }
-
+            ct_event!(mouse drag Left for x,y) => self.update_drag(Position::new(*x, *y)).into(),
+            ct_event!(mouse up Left for _x,_y) => self.commit_drag().into(),
+            ct_event!(mouse moved for _x,_y) => self.cancel_drag().into(), // reset drag on unknown
             _ => Outcome::Continue,
         });
         r
