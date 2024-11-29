@@ -1,4 +1,6 @@
-use crate::{relocate_event, render_windows, WindowManager, Windows, WindowsState};
+use crate::{
+    relocate_event, render_windows, WindowManager, WindowManagerState, Windows, WindowsState,
+};
 use rat_event::{ConsumedEvent, HandleEvent, Outcome, Regular};
 use rat_salsa::timer::TimeOut;
 use rat_salsa::{AppContext, AppState, AppWidget, Control, RenderContext};
@@ -145,6 +147,9 @@ where
             return Ok(Control::Continue);
         };
         let relocated = relocated.as_ref();
+
+        // Special action for focus.
+        self.rc.manager.borrow_mut().focus_to_front();
 
         // forward to window-manager
         let r0 = self

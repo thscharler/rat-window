@@ -1298,9 +1298,6 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
     fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> Outcome {
         let mut r = Outcome::Continue;
 
-        // Special action for focus.
-        self.focus_to_front();
-
         if self.container.get() {
             r = r.or_else(|| match event {
                 ct_event!(keycode press F(8)) => {
@@ -1314,13 +1311,8 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
             });
         }
         if self.mode == KeyboardMode::Meta && self.container.get() {
-            // if self.focused_window().is_none() {
-            //     self.focus_top_window();
-            // }
-            if let Some(handle) = self.front_window() {
+            if let Some(handle) = self.focused_window() {
                 r = r.or_else(|| match event {
-                    // ct_event!(keycode press Tab) => self.focus_next().into(),
-                    // ct_event!(keycode press SHIFT-Tab) => self.focus_prev().into(),
                     ct_event!(key press '0') => self
                         .snap_to(handle, self.snap_areas.len().saturating_sub(1))
                         .into(),
@@ -1358,6 +1350,46 @@ impl HandleEvent<crossterm::event::Event, Regular, Outcome> for DecoOneState {
                 });
             }
         }
+
+        r.or_else(|| self.handle(event, MouseOnly))
+    }
+}
+
+/// Result of event handling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum DecoOneOutcome {
+    /// The given event has not been used at all.
+    Continue,
+    /// The event has been recognized, but the result was nil.
+    /// Further processing for this event may stop.
+    Unchanged,
+    /// The event has been recognized and there is some change
+    /// due to it.
+    /// Further processing for this event may stop.
+    /// Rendering the ui is advised.
+    Changed,
+}
+
+impl ConsumedEvent for DecoOneOutcome {
+    fn is_consumed(&self) -> bool {
+        *self != DecoOneOutcome::Continue
+    }
+}
+
+// Useful for converting most navigation/edit results.
+impl From<bool> for DecoOneOutcome {
+    fn from(value: bool) -> Self {
+        if value {
+            DecoOneOutcome::Changed
+        } else {
+            DecoOneOutcome::Unchanged
+        }
+    }
+}
+
+impl HandleEvent<crossterm::event::Event, MouseOnly, Outcome> for DecoOneState {
+    fn handle(&mut self, event: &crossterm::event::Event, _qualifier: MouseOnly) -> Outcome {
+        let mut r = Outcome::Continue;
 
         r = r.or_else(|| match event {
             ct_event!(mouse any for m) if self.mouse.doubleclick(self.area_win, m) => {

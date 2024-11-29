@@ -1,7 +1,6 @@
 use crate::window_manager::{relocate_event, WindowManager};
 use crate::windows::WindowsState;
 use crate::{render_windows, WindowManagerState, Windows};
-use log::debug;
 use rat_event::{HandleEvent, Outcome, Regular};
 use rat_focus::{ContainerFlag, FocusBuilder, FocusContainer};
 use ratatui::buffer::Buffer;
@@ -10,7 +9,6 @@ use ratatui::prelude::StatefulWidget;
 use std::any::{type_name, Any, TypeId};
 use std::fmt::Debug;
 use std::ops::Deref;
-use std::time::SystemTime;
 
 ///
 /// Trait for rendering the contents of a widget.
@@ -93,8 +91,6 @@ where
     M: WindowManager,
 {
     fn build(&self, builder: &mut FocusBuilder) {
-        let t0 = SystemTime::now();
-
         // only have the windows themselves.
         let manager = self.rc.manager.borrow();
 
@@ -108,8 +104,6 @@ where
             builder.widget(has_focus);
             builder.end(container_end);
         }
-
-        debug!("ee {:?}", t0.elapsed());
     }
 
     fn container(&self) -> Option<ContainerFlag> {
@@ -131,6 +125,9 @@ where
         let Some(event) = relocate_event(self.rc.manager.borrow().deref(), event) else {
             return Outcome::Continue;
         };
+
+        // Special action for focus.
+        self.rc.manager.borrow_mut().focus_to_front();
 
         // forward to window-manager
         self.rc.manager.borrow_mut().handle(event.as_ref(), Regular)

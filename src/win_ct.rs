@@ -1,5 +1,5 @@
 use crate::window_manager::{relocate_event, WindowManager};
-use crate::{render_windows, Windows, WindowsState};
+use crate::{render_windows, WindowManagerState, Windows, WindowsState};
 use rat_event::{ConsumedEvent, HandleEvent, Outcome, Regular};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -95,6 +95,9 @@ where
         let Some(relocated) = relocate_event(self.rc.manager.borrow().deref(), event) else {
             return Outcome::Continue;
         };
+
+        // Special action for focus.
+        self.rc.manager.borrow_mut().focus_to_front();
 
         // forward to window-manager
         let r = self
