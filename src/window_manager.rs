@@ -127,6 +127,9 @@ pub trait WindowManagerState {
     /// Move the focused window to front.
     fn focus_to_front(&mut self) -> bool;
 
+    /// Focused window
+    fn focused_window(&self) -> Option<WinHandle>;
+
     /// Move a window to front.
     fn window_to_front(&mut self, handle: WinHandle) -> bool;
 

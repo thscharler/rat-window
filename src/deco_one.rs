@@ -606,6 +606,18 @@ impl WindowManagerState for DecoOneState {
         }
     }
 
+    /// Focused window
+    fn focused_window(&self) -> Option<WinHandle> {
+        for handle in self.order.iter() {
+            if let Some(meta) = self.meta.get(handle) {
+                if meta.container.get() {
+                    return Some(*handle);
+                }
+            }
+        }
+        None
+    }
+
     /// Move a window to front.
     fn window_to_front(&mut self, handle: WinHandle) -> bool {
         if self.order.last() == Some(&handle) {
