@@ -70,7 +70,7 @@ fn repaint_windows(
             .title_style(THEME.black(1))
             .title_alignment(Alignment::Center)
             .focus_style(THEME.focus())
-            .meta_style(THEME.secondary(2)),
+            .config_style(THEME.secondary(2)),
     )
     .offset(Position::new(10, 10))
     .render(hlayout[1], frame.buffer_mut(), &mut state.win.clone());

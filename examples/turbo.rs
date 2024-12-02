@@ -510,7 +510,7 @@ pub mod turbo {
                 DecoOne::new()
                     .title_style(ctx.g.theme.black(3))
                     .focus_style(ctx.g.theme.focus())
-                    .meta_style(ctx.g.theme.secondary(2)),
+                    .config_style(ctx.g.theme.secondary(2)),
             )
             .offset((100, 100).into())
             .render(r[1], buf, &mut ctx.g.win.clone(), ctx)?;
