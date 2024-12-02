@@ -4,7 +4,7 @@ use crate::mini_salsa::theme::THEME;
 use crate::mini_salsa::{run_ui, setup_logging, MiniSalsaState};
 use rat_event::{ct_event, ConsumedEvent, HandleEvent, Outcome, Regular};
 use rat_focus::{Focus, FocusBuilder, FocusContainer};
-use rat_window::{DecoOne, DecoOneState, WinFlags};
+use rat_window::{DecoOne, DecoOneState, WinFlags, WindowManagerState};
 use ratatui::layout::{Alignment, Constraint, Layout, Position, Rect};
 use ratatui::widgets::{Block, BorderType, StatefulWidget};
 use ratatui::Frame;
@@ -27,7 +27,7 @@ fn main() -> Result<(), anyhow::Error> {
     };
 
     run_ui(
-        "win0",
+        "concrete",
         handle_windows,
         repaint_windows,
         &mut data,
@@ -103,14 +103,14 @@ fn handle_windows(
     // build focus
     let old_focus = state.focus.take();
     let mut focus = FocusBuilder::rebuild(state, old_focus);
-
     let f = focus.handle(event, Regular);
+    state.focus = Some(focus);
 
     let r = match event {
         ct_event!(keycode press F(2)) => {
             let minwin = MinWin;
 
-            let fd = focus.clone_destruct();
+            let fd = state.focus.as_mut().expect("some").clone_destruct();
             let minwin_state = MinWinState {
                 focus_flags: fd.0,
                 areas: fd.1,
@@ -162,13 +162,12 @@ impl FocusContainer for State {
 
 pub mod min_win {
     use crate::mini_salsa::theme::THEME;
-    use log::debug;
     use rat_event::{ct_event, HandleEvent, Outcome, Regular};
     use rat_focus::{ContainerFlag, FocusBuilder, FocusContainer, FocusFlag, Navigation, ZRect};
     use rat_window::event::WindowsOutcome;
     use rat_window::{
-        fill_buffer, relocate_event, render_windows, DecoOne, DecoOneState, WinFlags, WinHandle,
-        WindowManagerState, Windows, WindowsState,
+        fill_buffer, relocate_event, render_windows, DecoOne, DecoOneOutcome, DecoOneState,
+        WinFlags, WinHandle, WindowManagerState, Windows, WindowsState,
     };
     use ratatui::buffer::Buffer;
     use ratatui::layout::{Position, Rect};
@@ -362,11 +361,26 @@ pub mod min_win {
             };
 
             // forward to window-manager
-            self.rc
-                .manager
-                .borrow_mut()
-                .handle(event.as_ref(), Regular)
-                .into()
+            let r = self.rc.manager.borrow_mut().handle(event.as_ref(), Regular);
+            match r {
+                DecoOneOutcome::ToFront(h, old) => {
+                    // transfer focus
+                    if let Some(oh) = old {
+                        let old_focus = self.window_focus(oh);
+                        let focus = self.window_focus(h);
+
+                        focus.set(old_focus.get());
+                        old_focus.set(false);
+
+                        let old_focus = self.window_container(oh);
+                        let focus = self.window_container(h);
+                        focus.set(old_focus.get());
+                        old_focus.set(false);
+                    }
+                    WindowsOutcome::ToFront(h, old)
+                }
+                r => r.into(),
+            }
         }
     }
 }

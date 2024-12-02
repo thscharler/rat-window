@@ -88,8 +88,8 @@ fn handle_windows(
     // build focus
     let old_focus = state.focus.take();
     let mut focus = FocusBuilder::rebuild(state, old_focus);
-
     let f = focus.handle(event, Regular);
+    state.focus = Some(focus);
 
     // let fd = focus.clone_destruct();
     // debug!("{:#?}", fd);
