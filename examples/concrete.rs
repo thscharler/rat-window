@@ -167,7 +167,7 @@ pub mod min_win {
     use rat_window::event::WindowsOutcome;
     use rat_window::{
         fill_buffer, relocate_event, render_windows, DecoOne, DecoOneOutcome, DecoOneState,
-        WinFlags, WinHandle, WindowManagerState, Windows, WindowsState,
+        KeyboardMode, WinFlags, WinHandle, WindowManagerState, Windows, WindowsState,
     };
     use ratatui::buffer::Buffer;
     use ratatui::layout::{Position, Rect};
@@ -328,15 +328,28 @@ pub mod min_win {
             // only have the windows themselves.
             let manager = self.rc.manager.borrow();
 
-            if let Some(handle) = manager.front_window() {
-                let frame = manager.window_frame(handle);
-                let has_focus = frame.as_has_focus();
+            if manager.mode() == KeyboardMode::Config {
+                for handle in self.handles_create() {
+                    let frame = manager.window_frame(handle);
+                    let has_focus = frame.as_has_focus();
 
-                // need the container for rendering the focus.
-                let container_end =
-                    builder.start(Some(manager.window_container(handle)), has_focus.area());
-                builder.widget(has_focus);
-                builder.end(container_end);
+                    // need the container for rendering the focus.
+                    let container_end =
+                        builder.start(Some(manager.window_container(handle)), has_focus.area());
+                    builder.widget(has_focus);
+                    builder.end(container_end);
+                }
+            } else {
+                if let Some(handle) = manager.front_window() {
+                    let frame = manager.window_frame(handle);
+                    let has_focus = frame.as_has_focus();
+
+                    // need the container for rendering the focus.
+                    let container_end =
+                        builder.start(Some(manager.window_container(handle)), has_focus.area());
+                    builder.widget(has_focus);
+                    builder.end(container_end);
+                }
             }
         }
 

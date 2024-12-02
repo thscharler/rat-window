@@ -97,7 +97,7 @@ struct DecoOneFrame {
 
 /// Current keyboard mode.
 #[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
-enum KeyboardMode {
+pub enum KeyboardMode {
     /// Regular behaviour
     #[default]
     Regular,
@@ -446,6 +446,14 @@ impl DecoOneFrame {
 impl DecoOneState {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn mode(&self) -> KeyboardMode {
+        self.mode
+    }
+
+    pub fn set_mode(&mut self, mode: KeyboardMode) {
+        self.mode = mode;
     }
 }
 
