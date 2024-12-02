@@ -14,16 +14,16 @@ pub enum WindowsOutcome {
     /// Further processing for this event may stop.
     /// Rendering the ui is advised.
     Changed,
-    /// Snap to a region occurred.
-    Snap(WinHandle, usize),
-    /// Moved to front.
-    ToFront(WinHandle),
     /// Currently moving.
     Moving(WinHandle),
-    /// Moved
-    Moved(WinHandle),
     /// Currently resizing.
     Resizing(WinHandle),
+    /// Snap to a region occurred.
+    Snap(WinHandle, u16),
+    /// Moved to front.
+    ToFront(WinHandle),
+    /// Moved
+    Moved(WinHandle),
     /// Resized
     Resized(WinHandle),
 }

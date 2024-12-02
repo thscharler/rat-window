@@ -113,13 +113,13 @@ pub trait WindowManagerState {
     ///
     /// __Panic__
     /// Panics when the index is out of bounds.
-    fn window_snap_idx(&self, handle: WinHandle) -> Option<usize>;
+    fn window_snap_idx(&self, handle: WinHandle) -> Option<u16>;
 
     /// The snap-index of the window.
     ///
     /// __Panic__
     /// Panics when the index is out of bounds.
-    fn set_window_snap_idx(&mut self, handle: WinHandle, idx: Option<usize>);
+    fn set_window_snap_idx(&mut self, handle: WinHandle, idx: Option<u16>);
 
     /// Area for the window's content.
     fn window_widget_area(&self, handle: WinHandle) -> Rect;

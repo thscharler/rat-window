@@ -1,5 +1,6 @@
 use crate::window_manager::{WindowManager, WindowManagerState};
 use crate::{DecoOne, WinFlags};
+use rat_focus::{ContainerFlag, FocusFlag};
 use ratatui::layout::{Position, Rect};
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashSet};
@@ -164,6 +165,32 @@ where
         self.rc.manager.borrow().offset()
     }
 
+    /// Container flag for all windows.
+    pub fn container(&self) -> ContainerFlag {
+        self.rc.manager.borrow().container()
+    }
+
+    /// Container flag for the given window.
+    pub fn window_container(&self, handle: WinHandle) -> ContainerFlag {
+        self.rc.manager.borrow().window_container(handle)
+    }
+
+    /// Sometimes the window itself wants to act as a widget.
+    /// Use this FocusFlag in that case.
+    pub fn window_focus(&self, handle: WinHandle) -> FocusFlag {
+        self.rc.manager.borrow().window_focus(handle)
+    }
+
+    /// Move the focused window to front.
+    pub fn focus_to_front(&self) -> bool {
+        self.rc.manager.borrow_mut().focus_to_front()
+    }
+
+    /// Handle of the focused window.
+    pub fn focused_window(&self) -> Option<WinHandle> {
+        self.rc.manager.borrow().focused_window()
+    }
+
     /// Area of the given window.
     pub fn window_area(&self, handle: WinHandle) -> Rect {
         self.rc.manager.borrow().window_area(handle)
@@ -191,6 +218,19 @@ where
     /// Set flags for a window.
     pub fn set_window_flags(&self, handle: WinHandle, flags: WinFlags) {
         self.rc.manager.borrow_mut().set_window_flags(handle, flags);
+    }
+
+    /// The snap-idx of the window.
+    pub fn window_snap_idx(&self, handle: WinHandle) -> Option<u16> {
+        self.rc.manager.borrow().window_snap_idx(handle)
+    }
+
+    /// Set the snap-idx of the window.
+    pub fn set_window_snap_idx(&self, handle: WinHandle, idx: Option<u16>) {
+        self.rc
+            .manager
+            .borrow_mut()
+            .set_window_snap_idx(handle, idx);
     }
 
     /// List of all windows in rendering order.
@@ -256,6 +296,11 @@ where
         self.rc.manager.borrow_mut().window_to_front(handle)
     }
 
+    /// Get the handle for the front window.
+    pub fn front_window(&self) -> Option<WinHandle> {
+        self.rc.manager.borrow().front_window()
+    }
+
     /// Get the window for the given handle.
     pub fn window(&self, handle: WinHandle) -> Rc<RefCell<T>> {
         self.rc
@@ -274,6 +319,22 @@ where
             .get(&handle)
             .expect("window")
             .clone()
+    }
+
+    /// Translate screen coordinates to window coordinates
+    pub fn screen_to_win(&self, pos: Position) -> Option<Position> {
+        self.rc.manager.borrow().screen_to_win(pos)
+    }
+
+    /// Translate window coordinates to screen coordinates
+    pub fn win_to_screen(&self, pos: Position) -> Option<Position> {
+        self.rc.manager.borrow().win_to_screen(pos)
+    }
+
+    /// Translate a window area to screen coordinates and
+    /// clips the area.
+    pub fn win_area_to_screen(&self, area: Rect) -> Rect {
+        self.rc.manager.borrow().win_area_to_screen(area)
     }
 }
 

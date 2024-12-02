@@ -1,4 +1,3 @@
-use crate::event::WindowsOutcome;
 use crate::{
     relocate_event, render_windows, WindowManager, WindowManagerState, Windows, WindowsState,
 };

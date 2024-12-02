@@ -65,7 +65,7 @@ struct DecoOneFrame {
     // base-line size of the window.
     base_size: Rect,
     // currently snapped to this snap region.
-    snapped_to: Option<usize>,
+    snapped_to: Option<u16>,
     // effective window size.
     window_area: Rect,
     // area for the window content.
@@ -124,7 +124,7 @@ struct Drag {
     // window
     handle: WinHandle,
     // snap before the drag
-    base_snap: Option<usize>,
+    base_snap: Option<u16>,
     // offset window origin to mouse cursor.
     win_offset: (u16, u16),
 }
@@ -176,7 +176,7 @@ impl WindowManager for DecoOne {
             let frame = state.meta.get_mut(handle).expect("window");
 
             if let Some(idx) = frame.snapped_to {
-                frame.window_area = state.snap_areas[idx].1;
+                frame.window_area = state.snap_areas[idx as usize].1;
             }
 
             let screen_area =
@@ -361,7 +361,7 @@ impl WindowManager for DecoOne {
 
 impl Drag {
     /// Drag data for a move.
-    fn new_move(handle: WinHandle, snap: Option<usize>, offset: (u16, u16)) -> Self {
+    fn new_move(handle: WinHandle, snap: Option<u16>, offset: (u16, u16)) -> Self {
         Self {
             action: DragAction::Move,
             handle,
@@ -371,7 +371,7 @@ impl Drag {
     }
 
     /// Drag data for a resize.
-    fn new_resize(handle: WinHandle, snap: Option<usize>, action: DragAction) -> Self {
+    fn new_resize(handle: WinHandle, snap: Option<u16>, action: DragAction) -> Self {
         Self {
             action,
             handle,
@@ -558,7 +558,7 @@ impl WindowManagerState for DecoOneState {
     ///
     /// __Panic__
     /// Panics when the index is out of bounds.
-    fn window_snap_idx(&self, handle: WinHandle) -> Option<usize> {
+    fn window_snap_idx(&self, handle: WinHandle) -> Option<u16> {
         self.meta.get(&handle).expect("window").snapped_to
     }
 
@@ -566,9 +566,9 @@ impl WindowManagerState for DecoOneState {
     ///
     /// __Panic__
     /// Panics when the index is out of bounds.
-    fn set_window_snap_idx(&mut self, handle: WinHandle, idx: Option<usize>) {
+    fn set_window_snap_idx(&mut self, handle: WinHandle, idx: Option<u16>) {
         if let Some(idx) = idx {
-            assert!(idx < self.snap_areas.len());
+            assert!(idx < self.snap_areas.len() as u16);
         }
         self.meta.get_mut(&handle).expect("window").snapped_to = idx;
     }
@@ -973,11 +973,11 @@ impl DecoOneState {
         base_size: Size,
         pos: Position,
         max: (u16, u16),
-    ) -> (Option<usize>, Rect) {
+    ) -> (Option<u16>, Rect) {
         // match a snap area?
         for (idx, (snap_area, resize_to)) in self.snap_areas.iter().enumerate() {
             if snap_area.iter().find(|v| v.contains(pos)).is_some() {
-                return (Some(idx), *resize_to);
+                return (Some(idx as u16), *resize_to);
             }
         }
 
@@ -1204,7 +1204,7 @@ impl DecoOneState {
     fn flip_maximize(&mut self, handle: WinHandle, pos: Position) -> DecoOneOutcome {
         if let Some(meta) = self.meta.get_mut(&handle) {
             if meta.move_area.contains(pos) && !self.snap_areas.is_empty() {
-                self.snap_to(handle, self.snap_areas.len().saturating_sub(1))
+                self.snap_to(handle, self.snap_areas.len().saturating_sub(1) as u16)
             } else {
                 DecoOneOutcome::Continue
             }
@@ -1214,18 +1214,18 @@ impl DecoOneState {
     }
 
     /// Snap a window to the given area.
-    fn snap_to(&mut self, handle: WinHandle, snap_idx: usize) -> DecoOneOutcome {
+    fn snap_to(&mut self, handle: WinHandle, snap_idx: u16) -> DecoOneOutcome {
         let Some(meta) = self.meta.get_mut(&handle) else {
             panic!("invalid handle");
         };
 
-        if snap_idx < self.snap_areas.len() {
+        if snap_idx < self.snap_areas.len() as u16 {
             if meta.snapped_to == Some(snap_idx) {
                 meta.snapped_to = None;
                 meta.window_area = meta.base_size;
             } else {
                 meta.snapped_to = Some(snap_idx);
-                meta.window_area = self.snap_areas[snap_idx].1;
+                meta.window_area = self.snap_areas[snap_idx as usize].1;
             }
             DecoOneOutcome::Snap(handle, snap_idx)
         } else {
@@ -1316,61 +1316,6 @@ impl DecoOneState {
     }
 }
 
-impl HandleEvent<crossterm::event::Event, Regular, DecoOneOutcome> for DecoOneState {
-    fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> DecoOneOutcome {
-        let mut r = DecoOneOutcome::Continue;
-
-        if self.container.get() {
-            r = r.or_else(|| match event {
-                ct_event!(keycode press F(8)) => {
-                    self.mode = match self.mode {
-                        KeyboardMode::Regular => KeyboardMode::Meta,
-                        KeyboardMode::Meta => KeyboardMode::Regular,
-                    };
-                    DecoOneOutcome::Changed
-                }
-                _ => DecoOneOutcome::Continue,
-            });
-        }
-        if self.mode == KeyboardMode::Meta && self.container.get() {
-            if let Some(handle) = self.focused_window() {
-                r = r.or_else(|| match event {
-                    ct_event!(key press '0') => {
-                        self.snap_to(handle, self.snap_areas.len().saturating_sub(1))
-                    }
-                    ct_event!(key press f@'1'..='9') => {
-                        let snap_idx = *f as usize - '1' as usize;
-                        self.snap_to(handle, snap_idx)
-                    }
-                    ct_event!(key press f@'a'..='z') => {
-                        let snap_idx = (*f as usize - 'a' as usize) + 9;
-                        self.snap_to(handle, snap_idx)
-                    }
-
-                    ct_event!(keycode press Up) => self.move_up(handle),
-                    ct_event!(keycode press CONTROL_SHIFT-Up) => self.resize_top(handle, 1),
-                    ct_event!(keycode press CONTROL_SHIFT-Down) => self.resize_top(handle, -1),
-
-                    ct_event!(keycode press Down) => self.move_down(handle),
-                    ct_event!(keycode press CONTROL-Down) => self.resize_bottom(handle, 1),
-                    ct_event!(keycode press CONTROL-Up) => self.resize_bottom(handle, -1),
-
-                    ct_event!(keycode press Left) => self.move_left(handle),
-                    ct_event!(keycode press CONTROL_SHIFT-Left) => self.resize_left(handle, 1),
-                    ct_event!(keycode press CONTROL_SHIFT-Right) => self.resize_left(handle, -1),
-                    ct_event!(keycode press Right) => self.move_right(handle),
-                    ct_event!(keycode press CONTROL-Left) => self.resize_right(handle, -1),
-                    ct_event!(keycode press CONTROL-Right) => self.resize_right(handle, 1),
-
-                    _ => DecoOneOutcome::Continue,
-                });
-            }
-        }
-
-        r.or_else(|| self.handle(event, MouseOnly))
-    }
-}
-
 /// Result of event handling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum DecoOneOutcome {
@@ -1384,16 +1329,16 @@ pub enum DecoOneOutcome {
     /// Further processing for this event may stop.
     /// Rendering the ui is advised.
     Changed,
-    /// Snap to a region occurred.
-    Snap(WinHandle, usize),
-    /// Moved to front.
-    ToFront(WinHandle),
     /// Currently moving.
     Moving(WinHandle),
-    /// Moved
-    Moved(WinHandle),
     /// Currently resizing.
     Resizing(WinHandle),
+    /// Snap to a region occurred.
+    Snap(WinHandle, u16),
+    /// Moved to front.
+    ToFront(WinHandle),
+    /// Moved
+    Moved(WinHandle),
     /// Resized
     Resized(WinHandle),
 }
@@ -1444,6 +1389,61 @@ impl From<DecoOneOutcome> for WindowsOutcome {
             DecoOneOutcome::Resizing(h) => WindowsOutcome::Resizing(h),
             DecoOneOutcome::Resized(h) => WindowsOutcome::Resized(h),
         }
+    }
+}
+
+impl HandleEvent<crossterm::event::Event, Regular, DecoOneOutcome> for DecoOneState {
+    fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> DecoOneOutcome {
+        let mut r = DecoOneOutcome::Continue;
+
+        if self.container.get() {
+            r = r.or_else(|| match event {
+                ct_event!(keycode press F(8)) => {
+                    self.mode = match self.mode {
+                        KeyboardMode::Regular => KeyboardMode::Meta,
+                        KeyboardMode::Meta => KeyboardMode::Regular,
+                    };
+                    DecoOneOutcome::Changed
+                }
+                _ => DecoOneOutcome::Continue,
+            });
+        }
+        if self.mode == KeyboardMode::Meta && self.container.get() {
+            if let Some(handle) = self.focused_window() {
+                r = r.or_else(|| match event {
+                    ct_event!(key press '0') => {
+                        self.snap_to(handle, self.snap_areas.len().saturating_sub(1) as u16)
+                    }
+                    ct_event!(key press f@'1'..='9') => {
+                        let snap_idx = *f as usize - '1' as usize;
+                        self.snap_to(handle, snap_idx as u16)
+                    }
+                    ct_event!(key press f@'a'..='z') => {
+                        let snap_idx = (*f as usize - 'a' as usize) + 9;
+                        self.snap_to(handle, snap_idx as u16)
+                    }
+
+                    ct_event!(keycode press Up) => self.move_up(handle),
+                    ct_event!(keycode press CONTROL_SHIFT-Up) => self.resize_top(handle, 1),
+                    ct_event!(keycode press CONTROL_SHIFT-Down) => self.resize_top(handle, -1),
+
+                    ct_event!(keycode press Down) => self.move_down(handle),
+                    ct_event!(keycode press CONTROL-Down) => self.resize_bottom(handle, 1),
+                    ct_event!(keycode press CONTROL-Up) => self.resize_bottom(handle, -1),
+
+                    ct_event!(keycode press Left) => self.move_left(handle),
+                    ct_event!(keycode press CONTROL_SHIFT-Left) => self.resize_left(handle, 1),
+                    ct_event!(keycode press CONTROL_SHIFT-Right) => self.resize_left(handle, -1),
+                    ct_event!(keycode press Right) => self.move_right(handle),
+                    ct_event!(keycode press CONTROL-Left) => self.resize_right(handle, -1),
+                    ct_event!(keycode press CONTROL-Right) => self.resize_right(handle, 1),
+
+                    _ => DecoOneOutcome::Continue,
+                });
+            }
+        }
+
+        r.or_else(|| self.handle(event, MouseOnly))
     }
 }
 
