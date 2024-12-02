@@ -1335,8 +1335,8 @@ pub enum DecoOneOutcome {
     Resizing(WinHandle),
     /// Snap to a region occurred.
     Snap(WinHandle, u16),
-    /// Moved to front.
-    ToFront(WinHandle),
+    /// Moved to front, old front window.
+    ToFront(WinHandle, Option<WinHandle>),
     /// Moved
     Moved(WinHandle),
     /// Resized
@@ -1367,7 +1367,7 @@ impl From<DecoOneOutcome> for Outcome {
             DecoOneOutcome::Unchanged => Outcome::Unchanged,
             DecoOneOutcome::Changed => Outcome::Changed,
             DecoOneOutcome::Snap(_, _) => Outcome::Changed,
-            DecoOneOutcome::ToFront(_) => Outcome::Changed,
+            DecoOneOutcome::ToFront(_, _) => Outcome::Changed,
             DecoOneOutcome::Moving(_) => Outcome::Changed,
             DecoOneOutcome::Moved(_) => Outcome::Changed,
             DecoOneOutcome::Resizing(_) => Outcome::Changed,
@@ -1383,7 +1383,7 @@ impl From<DecoOneOutcome> for WindowsOutcome {
             DecoOneOutcome::Unchanged => WindowsOutcome::Unchanged,
             DecoOneOutcome::Changed => WindowsOutcome::Changed,
             DecoOneOutcome::Snap(h, i) => WindowsOutcome::Snap(h, i),
-            DecoOneOutcome::ToFront(h) => WindowsOutcome::ToFront(h),
+            DecoOneOutcome::ToFront(h, oh) => WindowsOutcome::ToFront(h, oh),
             DecoOneOutcome::Moving(h) => WindowsOutcome::Moving(h),
             DecoOneOutcome::Moved(h) => WindowsOutcome::Moved(h),
             DecoOneOutcome::Resizing(h) => WindowsOutcome::Resizing(h),
@@ -1464,8 +1464,9 @@ impl HandleEvent<crossterm::event::Event, MouseOnly, DecoOneOutcome> for DecoOne
             ct_event!(mouse down Left for x,y) => {
                 let pos = Position::new(*x, *y);
                 if let Some(handle) = self.window_at(pos) {
+                    let old_handle = self.front_window();
                     let r0 = if self.window_to_front(handle) {
-                        DecoOneOutcome::ToFront(handle)
+                        DecoOneOutcome::ToFront(handle, old_handle)
                     } else {
                         DecoOneOutcome::Continue
                     };

@@ -21,7 +21,7 @@ pub enum WindowsOutcome {
     /// Snap to a region occurred.
     Snap(WinHandle, u16),
     /// Moved to front.
-    ToFront(WinHandle),
+    ToFront(WinHandle, Option<WinHandle>),
     /// Moved
     Moved(WinHandle),
     /// Resized
@@ -52,7 +52,7 @@ impl From<WindowsOutcome> for Outcome {
             WindowsOutcome::Unchanged => Outcome::Unchanged,
             WindowsOutcome::Changed => Outcome::Changed,
             WindowsOutcome::Snap(_, _) => Outcome::Changed,
-            WindowsOutcome::ToFront(_) => Outcome::Changed,
+            WindowsOutcome::ToFront(_, _) => Outcome::Changed,
             WindowsOutcome::Moving(_) => Outcome::Changed,
             WindowsOutcome::Moved(_) => Outcome::Changed,
             WindowsOutcome::Resizing(_) => Outcome::Changed,
