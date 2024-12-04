@@ -202,12 +202,10 @@ where
     /// This calls [self.add_offset()] to place the area relative to
     /// the visible area.
     pub fn set_window_area(&self, handle: WinHandle, area: Rect) {
-        let area = self.add_offset(area);
-        self.rc.manager.borrow_mut().set_window_area(handle, area);
-        self.rc
-            .manager
-            .borrow_mut()
-            .set_window_base_area(handle, area);
+        let mut manager = self.rc.manager.borrow_mut();
+        let area = manager.add_offset(area);
+        manager.set_window_area(handle, area);
+        manager.set_window_base_area(handle, area);
     }
 
     /// Flags for a window.
@@ -256,13 +254,6 @@ where
     /// Change the state for the given window.
     pub fn set_window_state(&self, handle: WinHandle, state: Rc<RefCell<S>>) {
         self.rc.window_states.borrow_mut().insert(handle, state);
-    }
-
-    /// Add the offset to the given area.
-    /// This is useful when you create new windows and don't
-    /// want to have them outside the visible area anyway.
-    pub fn add_offset(&self, area: Rect) -> Rect {
-        self.rc.manager.borrow().add_offset(area)
     }
 
     /// Open a new window with defaults.

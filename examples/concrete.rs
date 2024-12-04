@@ -4,7 +4,7 @@ use crate::mini_salsa::theme::THEME;
 use crate::mini_salsa::{run_ui, setup_logging, MiniSalsaState};
 use rat_event::{ct_event, ConsumedEvent, HandleEvent, Outcome, Regular};
 use rat_focus::{Focus, FocusBuilder, FocusContainer};
-use rat_window::{DecoOne, DecoOneState, WinFlags, WindowManagerState};
+use rat_window::{DecoOne, DecoOneState, WinFlags};
 use ratatui::layout::{Alignment, Constraint, Layout, Position, Rect};
 use ratatui::widgets::{Block, BorderType, StatefulWidget};
 use ratatui::Frame;
@@ -110,13 +110,11 @@ fn handle_windows(
         ct_event!(keycode press F(2)) => {
             let minwin = MinWin;
 
-            let fd = state.focus.as_mut().expect("some").clone_destruct();
             let minwin_state = MinWinState {
-                focus_flags: fd.0,
-                areas: fd.1,
-                z_rects: fd.2,
-                navigations: fd.3,
-                containers: fd.4,
+                f0: Default::default(),
+                f1: Default::default(),
+                f2: Default::default(),
+                f3: Default::default(),
                 handle: None,
                 win: Default::default(),
             };
@@ -161,9 +159,11 @@ impl FocusContainer for State {
 // -------------------------------------------------------------
 
 pub mod min_win {
+    use crate::mini_salsa::text_input_mock::{TextInputMock, TextInputMockState};
     use crate::mini_salsa::theme::THEME;
+    use log::debug;
     use rat_event::{ct_event, HandleEvent, Outcome, Regular};
-    use rat_focus::{ContainerFlag, FocusBuilder, FocusContainer, FocusFlag, Navigation, ZRect};
+    use rat_focus::{ContainerFlag, FocusBuilder, FocusContainer};
     use rat_window::event::WindowsOutcome;
     use rat_window::{
         fill_buffer, relocate_event, render_windows, DecoOne, DecoOneOutcome, DecoOneState,
@@ -171,21 +171,19 @@ pub mod min_win {
     };
     use ratatui::buffer::Buffer;
     use ratatui::layout::{Position, Rect};
-    use ratatui::text::Span;
-    use ratatui::widgets::{StatefulWidget, Widget};
+    use ratatui::widgets::StatefulWidget;
     use std::fmt::Debug;
-    use std::ops::{Deref, DerefMut, Range};
+    use std::ops::{Deref, DerefMut};
 
     #[derive(Debug)]
     pub struct MinWin;
 
     #[derive(Debug, Default)]
     pub struct MinWinState {
-        pub focus_flags: Vec<FocusFlag>,
-        pub areas: Vec<Rect>,
-        pub z_rects: Vec<Vec<ZRect>>,
-        pub navigations: Vec<Navigation>,
-        pub containers: Vec<(ContainerFlag, Rect, Range<usize>)>,
+        pub f0: TextInputMockState,
+        pub f1: TextInputMockState,
+        pub f2: TextInputMockState,
+        pub f3: TextInputMockState,
 
         pub handle: Option<WinHandle>,
         pub win: WinFlags,
@@ -197,21 +195,38 @@ pub mod min_win {
         fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
             fill_buffer(" ", THEME.orange(0), area, buf);
 
-            let mut info_area = Rect::new(area.x, area.y, area.width, 1);
-            for (idx, focus) in state.focus_flags.iter().enumerate() {
-                Span::from(format!("{}:{} {}", idx, focus.name(), focus.get()))
-                    .render(info_area, buf);
-                info_area.y += 1;
+            let mut t_area = Rect::new(area.x, area.y + 1, area.width * 2 / 3, 1);
+            TextInputMock::default()
+                .style(THEME.text_input())
+                .focus_style(THEME.text_focus())
+                .render(t_area, buf, &mut state.f0);
+            t_area.y += 2;
 
-                for zrect in state.z_rects[idx].iter() {
-                    Span::from(format!(
-                        "    {}:{}z{}+{}+{} ",
-                        zrect.x, zrect.y, zrect.z, zrect.width, zrect.height
-                    ))
-                    .render(info_area, buf);
-                    info_area.y += 1;
-                }
-            }
+            TextInputMock::default()
+                .style(THEME.text_input())
+                .focus_style(THEME.text_focus())
+                .render(t_area, buf, &mut state.f1);
+            t_area.y += 2;
+
+            TextInputMock::default()
+                .style(THEME.text_input())
+                .focus_style(THEME.text_focus())
+                .render(t_area, buf, &mut state.f2);
+            t_area.y += 2;
+
+            TextInputMock::default()
+                .style(THEME.text_input())
+                .focus_style(THEME.text_focus())
+                .render(t_area, buf, &mut state.f3);
+        }
+    }
+
+    impl FocusContainer for MinWinState {
+        fn build(&self, builder: &mut FocusBuilder) {
+            builder.widget(&self.f0);
+            builder.widget(&self.f1);
+            builder.widget(&self.f2);
+            builder.widget(&self.f3);
         }
     }
 
@@ -328,6 +343,8 @@ pub mod min_win {
             // only have the windows themselves.
             let manager = self.rc.manager.borrow();
 
+            builder.push_transform(&|v| self.win_area_to_screen(v));
+
             if manager.mode() == KeyboardMode::Config {
                 for handle in self.handles_create() {
                     let frame = manager.window_frame(handle);
@@ -341,16 +358,22 @@ pub mod min_win {
                 }
             } else {
                 if let Some(handle) = manager.front_window() {
-                    let frame = manager.window_frame(handle);
-                    let has_focus = frame.as_has_focus();
+                    let window_state = self.window_state(handle);
+                    let win_area = self.window_area(handle);
 
                     // need the container for rendering the focus.
                     let container_end =
-                        builder.start(Some(manager.window_container(handle)), has_focus.area());
-                    builder.widget(has_focus);
+                        builder.start(Some(manager.window_container(handle)), win_area);
+
+                    builder.container(window_state.borrow().deref());
+
                     builder.end(container_end);
                 }
             }
+
+            debug!("{:#?}", builder);
+
+            builder.pop_transform();
         }
 
         fn container(&self) -> Option<ContainerFlag> {

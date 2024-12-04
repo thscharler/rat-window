@@ -32,14 +32,16 @@ pub struct DecoOne {
 pub struct DecoOneState {
     /// View area in screen coordinates.
     area: Rect,
-    /// View area in windows coordinates.
-    area_win: Rect,
-    /// snap to tile areas. when inside a resize to b during move.
-    snap_areas: Vec<(Vec<Rect>, Rect)>,
-
     /// Render offset. All coordinates are shifted by this
     /// value before rendering.
     offset: Position,
+    /// View area in windows coordinates.
+    ///
+    /// The area starts at offset.x/offset.y and has a size
+    /// area.width/area.height.
+    area_win: Rect,
+    /// snap to tile areas. when inside a resize to b during move.
+    snap_areas: Vec<(Vec<Rect>, Rect)>,
 
     /// Window frame data.
     frames: HashMap<WinHandle, DecoOneFrame>,
@@ -68,12 +70,10 @@ struct DecoOneFrame {
     snapped_to: Option<u16>,
     // effective window size.
     window_area: Rect,
+    // window size as ZRect.
+    window_z_area: [ZRect; 1],
     // area for the window content.
     widget_area: Rect,
-    // area as rendered to the screen
-    screen_area: Rect,
-    // z-area as rendered to the screen.
-    screen_z_area: [ZRect; 1],
 
     // close icon
     close_area: Rect,
@@ -178,12 +178,7 @@ impl WindowManager for DecoOne {
             if let Some(idx) = frame.snapped_to {
                 frame.window_area = state.snap_areas[idx as usize].1;
             }
-
-            let screen_area =
-                DecoOneState::area_to_screen(frame.window_area, state.area, state.offset);
-            frame.screen_area = screen_area;
-            frame.screen_z_area[0] = ZRect::from((order_idx as u16, screen_area));
-
+            frame.window_z_area[0] = ZRect::from((order_idx as u16, frame.window_area));
             frame.widget_area = self.block.inner_if_some(frame.window_area);
 
             frame.close_area = if frame.flags.closeable {
@@ -387,9 +382,8 @@ impl Default for DecoOneFrame {
             base_size: Default::default(),
             snapped_to: None,
             window_area: Default::default(),
+            window_z_area: Default::default(),
             widget_area: Default::default(),
-            screen_area: Default::default(),
-            screen_z_area: [Default::default()],
             close_area: Default::default(),
             move_area: Default::default(),
             resize_left_area: Default::default(),
@@ -410,11 +404,11 @@ impl HasFocus for DecoOneFrame {
     }
 
     fn area(&self) -> Rect {
-        self.screen_area
+        self.window_area
     }
 
     fn z_areas(&self) -> &[ZRect] {
-        self.screen_z_area.as_slice()
+        self.window_z_area.as_slice()
     }
 
     fn navigable(&self) -> Navigation {
@@ -470,10 +464,7 @@ impl WindowManagerState for DecoOneState {
     /// Does nothing for regularly placed windows.
     fn set_area(&mut self, area: Rect) {
         self.area = area;
-        self.area_win = Rect::from((
-            self.screen_to_win(area.as_position()).expect("area"),
-            area.as_size(),
-        ));
+        self.calculate_area_win();
         self.calculate_snaps();
     }
 
@@ -485,6 +476,8 @@ impl WindowManagerState for DecoOneState {
     /// Current offset used for rendering.
     fn set_offset(&mut self, offset: Position) {
         self.offset = offset;
+        self.calculate_area_win();
+        self.calculate_snaps();
     }
 
     fn container(&self) -> ContainerFlag {
@@ -697,6 +690,16 @@ impl WindowManagerState for DecoOneState {
 }
 
 impl DecoOneState {
+    /// Calculate window area.
+    fn calculate_area_win(&mut self) {
+        self.area_win = Rect::new(
+            self.offset.x,
+            self.offset.y,
+            self.area.width,
+            self.area.height,
+        );
+    }
+
     /// Calculate the snap areas.
     fn calculate_snaps(&mut self) {
         self.snap_areas.clear();
@@ -940,8 +943,8 @@ impl DecoOneState {
     fn calculate_resize_left(&self, mut area: Rect, pos: Position) -> Rect {
         let right = area.x + area.width;
         area.x = pos.x;
-        if area.x < self.offset.x {
-            area.x = self.offset.x;
+        if area.x < self.area_win.x {
+            area.x = self.area_win.x;
         } else if area.x >= right.saturating_sub(2) {
             area.x = right.saturating_sub(2);
         }
@@ -999,13 +1002,13 @@ impl DecoOneState {
         win_area.width = base_size.width;
         win_area.height = base_size.height;
 
-        if win_area.y < self.offset.y {
-            win_area.y = self.offset.y;
+        if win_area.y < self.area_win.y {
+            win_area.y = self.area_win.y;
         } else if win_area.y >= max.1 {
             win_area.y = max.1;
         }
-        if win_area.x + win_area.width < self.offset.x {
-            win_area.x = self.offset.x.saturating_sub(win_area.width);
+        if win_area.x + win_area.width < self.area_win.x {
+            win_area.x = self.area_win.x.saturating_sub(win_area.width);
         }
         if win_area.x >= max.0 {
             win_area.x = max.0;
@@ -1116,8 +1119,8 @@ impl DecoOneState {
             return DecoOneOutcome::Continue;
         };
 
-        let max_x = (self.offset.x + self.area_win.width).saturating_sub(1);
-        let max_y = (self.offset.y + self.area_win.height).saturating_sub(1);
+        let max_x = (self.area_win.x + self.area_win.width).saturating_sub(1);
+        let max_y = (self.area_win.y + self.area_win.height).saturating_sub(1);
         let base_area = self.window_base_area(drag.handle);
         let win_area = self.window_area(drag.handle);
 
