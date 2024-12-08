@@ -1,7 +1,6 @@
-use crate::{
-    relocate_event, render_windows, WindowManager, WindowManagerState, Windows, WindowsState,
-};
+use crate::{render_windows, WindowManager, WindowManagerState, Windows, WindowsState};
 use rat_event::{ConsumedEvent, HandleEvent, Outcome, Regular};
+use rat_reloc::RelocatableState;
 use rat_salsa::timer::TimeOut;
 use rat_salsa::{AppContext, AppState, AppWidget, Control, RenderContext};
 use ratatui::buffer::Buffer;
@@ -9,7 +8,7 @@ use ratatui::layout::Rect;
 use std::any::{type_name, Any, TypeId};
 use std::cmp::max;
 use std::fmt::Debug;
-use std::ops::{Deref, DerefMut};
+use std::ops::DerefMut;
 
 pub trait WinSalsaWidget<Global, Message, Error>:
     AppWidget<Global, Message, Error, State = dyn WinSalsaState<Global, Message, Error>>
@@ -20,7 +19,8 @@ where
 {
 }
 
-pub trait WinSalsaState<Global, Message, Error>: AppState<Global, Message, Error> + Any
+pub trait WinSalsaState<Global, Message, Error>:
+    AppState<Global, Message, Error> + RelocatableState + Any
 where
     Global: 'static,
     Message: 'static + Send,
@@ -145,11 +145,6 @@ where
         event: &crossterm::event::Event,
         ctx: &mut AppContext<'_, Global, Message, Error>,
     ) -> Result<Control<Message>, Error> {
-        let Some(relocated) = relocate_event(self.rc.manager.borrow().deref(), event) else {
-            return Ok(Control::Continue);
-        };
-        let relocated = relocated.as_ref();
-
         // Special action for focus.
         self.rc.manager.borrow_mut().focus_to_front();
 
@@ -159,7 +154,7 @@ where
             .manager
             .borrow_mut()
             .deref_mut()
-            .handle(relocated, Regular)
+            .handle(event, Regular)
             .into();
 
         // forward to all windows
@@ -167,7 +162,7 @@ where
             'f: {
                 for handle in self.handles_render().into_iter().rev() {
                     let r = self.run_for_window(handle, &mut |_window, window_state| {
-                        window_state.crossterm(relocated, ctx)
+                        window_state.crossterm(event, ctx)
                     })?;
                     if r.is_consumed() {
                         break 'f Ok(r);

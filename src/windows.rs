@@ -201,9 +201,12 @@ where
     /// Sets both the window_area and the base_area of the window.
     /// This calls [self.add_offset()] to place the area relative to
     /// the visible area.
-    pub fn set_window_area(&self, handle: WinHandle, area: Rect) {
+    pub fn set_window_area(&self, handle: WinHandle, mut area: Rect) {
         let mut manager = self.rc.manager.borrow_mut();
-        let area = manager.add_offset(area);
+
+        area.x += manager.offset().x;
+        area.y += manager.offset().y;
+
         manager.set_window_area(handle, area);
         manager.set_window_base_area(handle, area);
     }
@@ -312,21 +315,26 @@ where
             .clone()
     }
 
-    /// Translate screen coordinates to window coordinates
-    pub fn screen_to_win(&self, pos: Position) -> Option<Position> {
-        self.rc.manager.borrow().screen_to_win(pos)
+    /// Required shift to go from window coordinates to screen coordinates.
+    pub fn shift(&self) -> (i16, i16) {
+        self.rc.manager.borrow().shift()
     }
 
-    /// Translate window coordinates to screen coordinates
-    pub fn win_to_screen(&self, pos: Position) -> Option<Position> {
-        self.rc.manager.borrow().win_to_screen(pos)
-    }
-
-    /// Translate a window area to screen coordinates and
-    /// clips the area.
-    pub fn win_area_to_screen(&self, area: Rect) -> Rect {
-        self.rc.manager.borrow().win_area_to_screen(area)
-    }
+    // /// Translate screen coordinates to window coordinates
+    // pub fn screen_to_win(&self, pos: Position) -> Option<Position> {
+    //     self.rc.manager.borrow().screen_to_win(pos)
+    // }
+    //
+    // /// Translate window coordinates to screen coordinates
+    // pub fn win_to_screen(&self, pos: Position) -> Option<Position> {
+    //     self.rc.manager.borrow().win_to_screen(pos)
+    // }
+    //
+    // /// Translate a window area to screen coordinates and
+    // /// clips the area.
+    // pub fn win_area_to_screen(&self, area: Rect) -> Rect {
+    //     self.rc.manager.borrow().win_area_to_screen(area)
+    // }
 }
 
 impl<T, S, M> WindowsState<T, S, M>

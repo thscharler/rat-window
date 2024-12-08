@@ -1,8 +1,8 @@
 use crate::{WinFlags, WinHandle, Windows, WindowsState};
 use rat_focus::{ContainerFlag, FocusFlag, HasFocus};
+use rat_reloc::RelocatableState;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
-use std::borrow::Cow;
 use std::ops::DerefMut;
 
 pub trait WindowManager {
@@ -140,51 +140,18 @@ pub trait WindowManagerState {
     /// Get the front window handle
     fn front_window(&self) -> Option<WinHandle>;
 
-    /// Window at the given __window__ position.
+    /// Window at the given __screen__ position.
     fn window_at(&self, pos: Position) -> Option<WinHandle>;
 
-    /// Add the offset to the given area.
-    /// This is useful when you create new windows and don't
-    /// want to have them outside the visible area anyway.
-    fn add_offset(&self, area: Rect) -> Rect;
-
-    /// Translate screen coordinates to window coordinates.
-    fn screen_to_win(&self, pos: Position) -> Option<Position>;
-
-    /// Translate window coordinates to screen coordinates
-    fn win_to_screen(&self, pos: Position) -> Option<Position>;
-
-    /// Translate a window area to screen coordinates and
-    /// clips the area.
-    fn win_area_to_screen(&self, area: Rect) -> Rect;
+    /// Return the shift required to call [rat-reloc::RelocatableState]
+    /// for a window.
+    fn shift(&self) -> (i16, i16);
 }
 
 /// Trait for the window frame widget.
 pub trait WindowFrame {
     /// Do some trait upcasting.
     fn as_has_focus(&self) -> &dyn HasFocus;
-}
-
-/// Relocate mouse events to window coordinates.
-pub fn relocate_event<'a, 'b>(
-    window_manager: &'a impl WindowManagerState,
-    event: &'b crossterm::event::Event,
-) -> Option<Cow<'b, crossterm::event::Event>> {
-    match event {
-        crossterm::event::Event::Mouse(mouse_event) => {
-            if let Some(pos) =
-                window_manager.screen_to_win(Position::new(mouse_event.column, mouse_event.row))
-            {
-                let mut mm = mouse_event.clone();
-                mm.column = pos.x;
-                mm.row = pos.y;
-                Some(Cow::Owned(crossterm::event::Event::Mouse(mm)))
-            } else {
-                None
-            }
-        }
-        e => Some(Cow::Borrowed(e)),
-    }
 }
 
 /// Helper function used to implement window rendering for a
@@ -199,7 +166,7 @@ pub fn render_windows<'a, T, S, M, RF, Err>(
 where
     RF: FnMut(&mut T, Rect, &mut Buffer, &mut S) -> Result<(), Err>,
     T: ?Sized + 'a,
-    S: ?Sized + 'a,
+    S: RelocatableState + ?Sized + 'a,
     M: WindowManager,
 {
     state.rc.manager.borrow_mut().set_offset(windows.offset);
@@ -238,6 +205,12 @@ where
             windows
                 .manager
                 .render_free_buffer(tmp_buf, &mut state.rc.manager.borrow_mut());
+
+            // relocate the window state to the target
+            window_state.relocate(
+                state.rc.manager.borrow().shift(),
+                state.rc.manager.borrow().area(),
+            );
 
             Ok(())
         })?;

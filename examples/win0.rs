@@ -109,13 +109,7 @@ fn handle_windows(
         ct_event!(keycode press F(2)) => {
             let minwin = MinWin;
 
-            let fd = focus.clone_destruct();
             let minwin_state = MinWinState {
-                focus_flags: fd.0,
-                areas: fd.1,
-                z_rects: fd.2,
-                navigations: fd.3,
-                containers: fd.4,
                 handle: None,
                 win: Default::default(),
             };
@@ -180,14 +174,11 @@ pub mod min_win {
     use crate::mini_salsa::theme::THEME;
     use crossterm::event::Event;
     use rat_event::{ct_event, HandleEvent, Outcome, Regular};
-    use rat_focus::{ContainerFlag, FocusFlag, Navigation, ZRect};
+    use rat_reloc::RelocatableState;
     use rat_window::{fill_buffer, WinFlags, WinHandle, WinState, WinWidget};
     use ratatui::buffer::Buffer;
     use ratatui::layout::Rect;
-    use ratatui::text::Span;
-    use ratatui::widgets::Widget;
     use std::cell::RefCell;
-    use std::ops::Range;
     use std::rc::Rc;
 
     #[derive(Debug)]
@@ -195,12 +186,6 @@ pub mod min_win {
 
     #[derive(Debug, Default)]
     pub struct MinWinState {
-        pub focus_flags: Vec<FocusFlag>,
-        pub areas: Vec<Rect>,
-        pub z_rects: Vec<Vec<ZRect>>,
-        pub navigations: Vec<Navigation>,
-        pub containers: Vec<(ContainerFlag, Rect, Range<usize>)>,
-
         pub handle: Option<WinHandle>,
         pub win: WinFlags,
     }
@@ -215,25 +200,8 @@ pub mod min_win {
         type State = dyn WinState;
 
         fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
-            let state = state.downcast_mut::<MinWinState>().expect("minwin-state");
-
+            let _state = state.downcast_mut::<MinWinState>().expect("minwin-state");
             fill_buffer(" ", THEME.orange(0), area, buf);
-
-            let mut info_area = Rect::new(area.x, area.y, area.width, 1);
-            for (idx, focus) in state.focus_flags.iter().enumerate() {
-                Span::from(format!("{}:{} {}", idx, focus.name(), focus.get()))
-                    .render(info_area, buf);
-                info_area.y += 1;
-
-                for zrect in state.z_rects[idx].iter() {
-                    Span::from(format!(
-                        "    {}:{}z{}+{}+{} ",
-                        zrect.x, zrect.y, zrect.z, zrect.width, zrect.height
-                    ))
-                    .render(info_area, buf);
-                    info_area.y += 1;
-                }
-            }
         }
     }
 
@@ -245,6 +213,10 @@ pub mod min_win {
         pub fn get_flags(&self) -> WinFlags {
             self.win.clone()
         }
+    }
+
+    impl RelocatableState for MinWinState {
+        fn relocate(&mut self, _shift: (i16, i16), _clip: Rect) {}
     }
 
     impl WinState for MinWinState {}
@@ -269,6 +241,7 @@ pub mod max_win {
     use crate::mini_salsa::theme::THEME;
     use crossterm::event::Event;
     use rat_event::{ct_event, HandleEvent, Outcome, Regular};
+    use rat_reloc::RelocatableState;
     use rat_window::{
         fill_buffer, DecoOne, WinFlags, WinHandle, WinState, WinWidget, WindowsState,
     };
@@ -345,6 +318,10 @@ pub mod max_win {
         pub fn get_flags(&self) -> WinFlags {
             self.win.clone()
         }
+    }
+
+    impl RelocatableState for MaxWinState {
+        fn relocate(&mut self, _shift: (i16, i16), _clip: Rect) {}
     }
 
     impl WinState for MaxWinState {}

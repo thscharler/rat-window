@@ -1,15 +1,15 @@
 use crate::event::WindowsOutcome;
-use crate::window_manager::{relocate_event, WindowManager};
+use crate::window_manager::WindowManager;
 use crate::windows::WindowsState;
 use crate::{render_windows, WindowManagerState, Windows};
 use rat_event::{ConsumedEvent, HandleEvent, Regular};
 use rat_focus::{ContainerFlag, FocusBuilder, FocusContainer};
+use rat_reloc::RelocatableState;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::prelude::StatefulWidget;
 use std::any::{type_name, Any, TypeId};
 use std::fmt::Debug;
-use std::ops::Deref;
 
 ///
 /// Trait for rendering the contents of a widget.
@@ -25,7 +25,7 @@ pub trait WinWidget {
 ///
 /// State for a window.
 ///
-pub trait WinState: Any {}
+pub trait WinState: RelocatableState + Any {}
 
 impl dyn WinState {
     /// Call the closure for a given window.
@@ -124,18 +124,10 @@ where
     M::State: HandleEvent<crossterm::event::Event, Regular, M::Outcome>,
 {
     fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> WindowsOutcome {
-        let Some(event) = relocate_event(self.rc.manager.borrow().deref(), event) else {
-            return WindowsOutcome::Continue;
-        };
-
         // Special action for focus.
         self.rc.manager.borrow_mut().focus_to_front();
 
         // forward to window-manager
-        self.rc
-            .manager
-            .borrow_mut()
-            .handle(event.as_ref(), Regular)
-            .into()
+        self.rc.manager.borrow_mut().handle(event, Regular).into()
     }
 }

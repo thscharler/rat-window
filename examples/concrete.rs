@@ -161,13 +161,13 @@ impl FocusContainer for State {
 pub mod min_win {
     use crate::mini_salsa::text_input_mock::{TextInputMock, TextInputMockState};
     use crate::mini_salsa::theme::THEME;
-    use log::debug;
     use rat_event::{ct_event, HandleEvent, Outcome, Regular};
     use rat_focus::{ContainerFlag, FocusBuilder, FocusContainer};
+    use rat_reloc::RelocatableState;
     use rat_window::event::WindowsOutcome;
     use rat_window::{
-        fill_buffer, relocate_event, render_windows, DecoOne, DecoOneOutcome, DecoOneState,
-        KeyboardMode, WinFlags, WinHandle, WindowManagerState, Windows, WindowsState,
+        fill_buffer, render_windows, DecoOne, DecoOneOutcome, DecoOneState, KeyboardMode, WinFlags,
+        WinHandle, WindowManagerState, Windows, WindowsState,
     };
     use ratatui::buffer::Buffer;
     use ratatui::layout::{Position, Rect};
@@ -227,6 +227,12 @@ pub mod min_win {
             builder.widget(&self.f1);
             builder.widget(&self.f2);
             builder.widget(&self.f3);
+        }
+    }
+
+    impl RelocatableState for MinWinState {
+        fn relocate(&mut self, shift: (i16, i16), clip: Rect) {
+            self.f0.relocate(shift, clip);
         }
     }
 
@@ -343,8 +349,6 @@ pub mod min_win {
             // only have the windows themselves.
             let manager = self.rc.manager.borrow();
 
-            builder.push_transform(&|v| self.win_area_to_screen(v));
-
             if manager.mode() == KeyboardMode::Config {
                 for handle in self.handles_create() {
                     let frame = manager.window_frame(handle);
@@ -370,10 +374,6 @@ pub mod min_win {
                     builder.end(container_end);
                 }
             }
-
-            debug!("{:#?}", builder);
-
-            builder.pop_transform();
         }
 
         fn container(&self) -> Option<ContainerFlag> {
@@ -392,12 +392,8 @@ pub mod min_win {
             event: &crossterm::event::Event,
             _qualifier: Regular,
         ) -> WindowsOutcome {
-            let Some(event) = relocate_event(self.rc.manager.borrow().deref(), event) else {
-                return WindowsOutcome::Continue;
-            };
-
             // forward to window-manager
-            let r = self.rc.manager.borrow_mut().handle(event.as_ref(), Regular);
+            let r = self.rc.manager.borrow_mut().handle(event, Regular);
             match r {
                 DecoOneOutcome::ToFront(h, old) => {
                     // transfer focus

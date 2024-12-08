@@ -2,6 +2,7 @@
 
 use rat_event::{HandleEvent, MouseOnly, Outcome, Regular};
 use rat_focus::{FocusFlag, HasFocus};
+use rat_reloc::{relocate_area, RelocatableState};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::prelude::{StatefulWidget, Style};
@@ -71,6 +72,12 @@ impl HasFocus for TextInputMockState {
 
     fn area(&self) -> Rect {
         self.area
+    }
+}
+
+impl RelocatableState for TextInputMockState {
+    fn relocate(&mut self, shift: (i16, i16), clip: Rect) {
+        self.area = relocate_area(self.area, shift, clip);
     }
 }
 
