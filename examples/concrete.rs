@@ -4,6 +4,7 @@ use crate::mini_salsa::theme::THEME;
 use crate::mini_salsa::{run_ui, setup_logging, MiniSalsaState};
 use rat_event::{ct_event, ConsumedEvent, HandleEvent, Outcome, Regular};
 use rat_focus::{Focus, FocusBuilder, FocusContainer};
+use rat_widget::text::HasScreenCursor;
 use rat_window::{DecoOne, DecoOneState, WinFlags};
 use ratatui::layout::{Alignment, Constraint, Layout, Position, Rect};
 use ratatui::widgets::{Block, BorderType, StatefulWidget};
@@ -91,6 +92,10 @@ fn repaint_windows(
     .offset(Position::new(10, 10))
     .render(hlayout[1], frame.buffer_mut(), &mut state.win.clone());
 
+    if let Some(cursor) = state.screen_cursor() {
+        frame.set_cursor_position(cursor);
+    }
+
     Ok(())
 }
 
@@ -148,6 +153,15 @@ fn handle_windows(
     Ok(max(f, r))
 }
 
+impl HasScreenCursor for State {
+    fn screen_cursor(&self) -> Option<(u16, u16)> {
+        self.mock0
+            .screen_cursor()
+            .or(self.win.screen_cursor())
+            .or(self.mock1.screen_cursor())
+    }
+}
+
 impl FocusContainer for State {
     fn build(&self, builder: &mut FocusBuilder) {
         builder.widget(&self.mock0);
@@ -164,10 +178,11 @@ pub mod min_win {
     use rat_event::{ct_event, HandleEvent, Outcome, Regular};
     use rat_focus::{ContainerFlag, FocusBuilder, FocusContainer};
     use rat_reloc::RelocatableState;
+    use rat_widget::text::HasScreenCursor;
     use rat_window::event::WindowsOutcome;
     use rat_window::{
-        fill_buffer, render_windows, DecoOne, DecoOneOutcome, DecoOneState, KeyboardMode, WinFlags,
-        WinHandle, WindowManagerState, Windows, WindowsState,
+        fill_buffer, render_windows, DecoOne, DecoOneOutcome, DecoOneState, WinFlags, WinHandle,
+        WindowManagerState, WindowMode, Windows, WindowsState,
     };
     use ratatui::buffer::Buffer;
     use ratatui::layout::{Position, Rect};
@@ -233,6 +248,19 @@ pub mod min_win {
     impl RelocatableState for MinWinState {
         fn relocate(&mut self, shift: (i16, i16), clip: Rect) {
             self.f0.relocate(shift, clip);
+            self.f1.relocate(shift, clip);
+            self.f2.relocate(shift, clip);
+            self.f3.relocate(shift, clip);
+        }
+    }
+
+    impl HasScreenCursor for MinWinState {
+        fn screen_cursor(&self) -> Option<(u16, u16)> {
+            self.f0
+                .screen_cursor()
+                .or(self.f1.screen_cursor())
+                .or(self.f2.screen_cursor())
+                .or(self.f3.screen_cursor())
         }
     }
 
@@ -344,19 +372,40 @@ pub mod min_win {
         }
     }
 
+    impl HasScreenCursor for MinWindowsState {
+        fn screen_cursor(&self) -> Option<(u16, u16)> {
+            // only have the windows themselves.
+            let manager = self.rc.manager.borrow();
+            if manager.mode() == WindowMode::Config {
+                None
+            } else {
+                if let Some(handle) = manager.front_window() {
+                    let window_state = self.window_state(handle);
+                    let window_state = window_state.borrow();
+                    window_state.screen_cursor()
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
     impl FocusContainer for MinWindowsState {
         fn build(&self, builder: &mut FocusBuilder) {
             // only have the windows themselves.
             let manager = self.rc.manager.borrow();
 
-            if manager.mode() == KeyboardMode::Config {
+            if manager.mode() == WindowMode::Config {
                 for handle in self.handles_create() {
                     let frame = manager.window_frame(handle);
                     let has_focus = frame.as_has_focus();
 
                     // need the container for rendering the focus.
-                    let container_end =
-                        builder.start(Some(manager.window_container(handle)), has_focus.area());
+                    let container_end = builder.start(
+                        Some(manager.window_container(handle)),
+                        has_focus.area(),
+                        has_focus.area_z(),
+                    );
                     builder.widget(has_focus);
                     builder.end(container_end);
                 }

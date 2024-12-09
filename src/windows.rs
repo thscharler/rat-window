@@ -1,5 +1,5 @@
 use crate::window_manager::{WindowManager, WindowManagerState};
-use crate::{DecoOne, WinFlags};
+use crate::{DecoOne, WinFlags, WindowMode};
 use rat_focus::{ContainerFlag, FocusFlag};
 use ratatui::layout::{Position, Rect};
 use std::cell::{Cell, RefCell};
@@ -163,6 +163,16 @@ where
     /// Current offset for windows.
     pub fn offset(&self) -> Position {
         self.rc.manager.borrow().offset()
+    }
+
+    /// Set the current mode.
+    pub fn set_mode(&self, mode: WindowMode) {
+        self.rc.manager.borrow_mut().set_mode(mode);
+    }
+
+    /// Get the current mode.
+    pub fn mode(&self) -> WindowMode {
+        self.rc.manager.borrow().mode()
     }
 
     /// Container flag for all windows.

@@ -3,6 +3,7 @@
 use rat_event::{HandleEvent, MouseOnly, Outcome, Regular};
 use rat_focus::{FocusFlag, HasFocus};
 use rat_reloc::{relocate_area, RelocatableState};
+use rat_widget::text::HasScreenCursor;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::prelude::{StatefulWidget, Style};
@@ -72,6 +73,16 @@ impl HasFocus for TextInputMockState {
 
     fn area(&self) -> Rect {
         self.area
+    }
+}
+
+impl HasScreenCursor for TextInputMockState {
+    fn screen_cursor(&self) -> Option<(u16, u16)> {
+        if self.is_focused() {
+            Some((self.area.x, self.area.y))
+        } else {
+            None
+        }
     }
 }
 

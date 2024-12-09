@@ -301,6 +301,7 @@ pub mod turbo {
     use crate::{AppContext, GlobalState, RenderContext, TurboMsg};
     use anyhow::Error;
     use crossterm::event::Event;
+    use rat_cursor::HasScreenCursor;
     use rat_salsa::{AppState, AppWidget, Control};
     use rat_widget::event::{ct_event, try_flow, HandleEvent, MenuOutcome, Popup, Regular};
     use rat_widget::focus::{FocusBuilder, FocusContainer};
@@ -515,6 +516,10 @@ pub mod turbo {
             .offset((100, 100).into())
             .render(r[1], buf, &mut ctx.g.win.clone(), ctx)?;
 
+            if let Some(cursor) = ctx.g.win.screen_cursor() {
+                ctx.set_screen_cursor(Some(cursor));
+            }
+
             let (menubar, popup) = Menubar::new(&Menu)
                 .styles(ctx.g.theme.menu_style())
                 .title("  ")
@@ -566,7 +571,7 @@ pub mod turbo {
     impl FocusContainer for TurboState {
         fn build(&self, builder: &mut FocusBuilder) {
             builder.widget(&self.menu);
-            // builder.container(&self.win);
+            builder.container(&self.win);
         }
     }
 
@@ -675,8 +680,10 @@ pub mod turbo_editor {
     use crate::message::TurboMsg;
     use anyhow::Error;
     use crossterm::event::Event;
+    use rat_cursor::HasScreenCursor;
     use rat_event::{HandleEvent, Regular};
     use rat_focus::{FocusBuilder, FocusContainer};
+    use rat_reloc::RelocatableState;
     use rat_salsa::{AppContext, AppState, AppWidget, Control, RenderContext};
     use rat_widget::text_input::{TextInput, TextInputState};
     use rat_window::{WinHandle, WinSalsaState, WinSalsaWidget};
@@ -770,7 +777,23 @@ pub mod turbo_editor {
         }
     }
 
-    impl WinSalsaState<GlobalState, TurboMsg, Error> for TurboEditorState {}
+    impl RelocatableState for TurboEditorState {
+        fn relocate(&mut self, shift: (i16, i16), clip: Rect) {
+            self.editor.relocate(shift, clip);
+        }
+    }
+
+    impl HasScreenCursor for TurboEditorState {
+        fn screen_cursor(&self) -> Option<(u16, u16)> {
+            self.editor.screen_cursor()
+        }
+    }
+
+    impl WinSalsaState<GlobalState, TurboMsg, Error> for TurboEditorState {
+        fn as_focus_container(&self) -> &dyn FocusContainer {
+            self
+        }
+    }
 }
 
 fn setup_logging() -> Result<(), Error> {

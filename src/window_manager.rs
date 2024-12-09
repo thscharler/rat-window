@@ -1,5 +1,5 @@
 use crate::{WinFlags, WinHandle, Windows, WindowsState};
-use rat_focus::{ContainerFlag, FocusFlag, HasFocus};
+use rat_focus::{ContainerFlag, FocusContainer, FocusFlag, HasFocus};
 use rat_reloc::RelocatableState;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
@@ -60,6 +60,12 @@ pub trait WindowManagerState {
     /// Setting the offset allows windows to move left/top
     /// outside the area.
     fn set_offset(&mut self, offset: Position);
+
+    /// Set current window mode.
+    fn set_mode(&mut self, mode: WindowMode);
+
+    /// Current window mode.
+    fn mode(&self) -> WindowMode;
 
     /// Container flag for all windows.
     fn container(&self) -> ContainerFlag;
@@ -148,10 +154,26 @@ pub trait WindowManagerState {
     fn shift(&self) -> (i16, i16);
 }
 
+/// Mode for the window manager.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum WindowMode {
+    /// Normal mode.
+    #[default]
+    Regular,
+    /// Window configuration mode.
+    ///
+    /// When this mode is set size and position of the windows
+    /// can be changed with keyboard actions.
+    Config,
+}
+
 /// Trait for the window frame widget.
 pub trait WindowFrame {
-    /// Do some trait upcasting.
+    /// Cast the window frame as focusable widget.
     fn as_has_focus(&self) -> &dyn HasFocus;
+
+    /// Cast the window frame as a widget container.
+    fn as_focus_container(&self) -> &dyn FocusContainer;
 }
 
 /// Helper function used to implement window rendering for a

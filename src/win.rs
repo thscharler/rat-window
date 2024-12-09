@@ -100,10 +100,7 @@ where
             let frame = manager.window_frame(handle);
             let has_focus = frame.as_has_focus();
 
-            let container_end =
-                builder.start(Some(manager.window_container(handle)), has_focus.area());
             builder.widget(has_focus);
-            builder.end(container_end);
         }
     }
 

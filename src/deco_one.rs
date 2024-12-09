@@ -1,11 +1,11 @@
 use crate::event::WindowsOutcome;
 use crate::util::revert_style;
 use crate::window_manager::{WindowManager, WindowManagerState};
-use crate::{WinFlags, WinHandle, WindowFrame};
+use crate::{WinFlags, WinHandle, WindowFrame, WindowMode, WindowsState};
 use rat_event::util::MouseFlags;
 use rat_event::{ct_event, ConsumedEvent, HandleEvent, MouseOnly, Outcome, Regular};
-use rat_focus::{ContainerFlag, FocusFlag, HasFocus, Navigation, ZRect};
-use rat_reloc::{relocate_area, RelocatableState};
+use rat_focus::{ContainerFlag, FocusBuilder, FocusContainer, FocusFlag, HasFocus, Navigation};
+use rat_reloc::relocate_area;
 use ratatui::buffer::{Buffer, Cell};
 use ratatui::layout::{Alignment, Position, Rect, Size};
 use ratatui::prelude::BlockExt;
@@ -56,7 +56,7 @@ pub struct DecoOneState {
     drag: Option<Drag>,
 
     /// Keyboard mode
-    mode: KeyboardMode,
+    mode: WindowMode,
     /// Container focus for all windows.
     container: ContainerFlag,
     /// mouse flags
@@ -80,8 +80,8 @@ struct DecoOneFrame {
 
     // window area in screen coordinates.
     area: Rect,
-    // window size as ZRect.
-    z_area: [ZRect; 1],
+    // window stacking order as z value
+    area_z: u16,
 
     // close icon. in screen coordinates.
     close_area: Rect,
@@ -101,16 +101,6 @@ struct DecoOneFrame {
 
     // display parameters
     flags: WinFlags,
-}
-
-/// Current keyboard mode.
-#[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
-pub enum KeyboardMode {
-    /// Regular behaviour
-    #[default]
-    Regular,
-    /// Do work on the windows themselves.
-    Config,
 }
 
 /// Current drag action.
@@ -193,7 +183,9 @@ impl WindowManager for DecoOne {
             // screen areas for interactions.
 
             frame.area = relocate_area(frame.area_win, shift, state.area);
-            frame.z_area[0] = ZRect::from((order_idx as u16, frame.area));
+            // use a z value of 10xorder. should be enough for
+            // possible popups inside a window.
+            frame.area_z = order_idx as u16 * 10;
 
             frame.close_area = if frame.flags.closeable {
                 Rect::new(frame.area.right().saturating_sub(4), frame.area.top(), 3, 1)
@@ -273,7 +265,7 @@ impl WindowManager for DecoOne {
 
         let focus = frame.container.get();
         let style = if focus {
-            if state.mode == KeyboardMode::Config {
+            if state.mode == WindowMode::Config {
                 self.config_style.unwrap_or(revert_style(self.title_style))
             } else {
                 self.focus_style.unwrap_or(revert_style(self.title_style))
@@ -394,7 +386,7 @@ impl Default for DecoOneFrame {
             area_win: Default::default(),
             widget_area_win: Default::default(),
             area: Default::default(),
-            z_area: Default::default(),
+            area_z: 0,
             close_area: Default::default(),
             move_area: Default::default(),
             resize_left_area: Default::default(),
@@ -410,6 +402,17 @@ impl Default for DecoOneFrame {
 }
 
 impl HasFocus for DecoOneFrame {
+    fn build(&self, builder: &mut FocusBuilder) {
+        let tag = builder.start(Some(self.container.clone()), self.area, self.area_z);
+        builder.add_widget(
+            self.focus.clone(),
+            self.area,
+            self.area_z,
+            Navigation::Regular,
+        );
+        builder.end(tag);
+    }
+
     fn focus(&self) -> FocusFlag {
         self.focus.clone()
     }
@@ -418,8 +421,8 @@ impl HasFocus for DecoOneFrame {
         self.area
     }
 
-    fn z_areas(&self) -> &[ZRect] {
-        self.z_area.as_slice()
+    fn area_z(&self) -> u16 {
+        self.area_z
     }
 
     fn navigable(&self) -> Navigation {
@@ -427,8 +430,28 @@ impl HasFocus for DecoOneFrame {
     }
 }
 
+impl FocusContainer for DecoOneFrame {
+    fn build(&self, _builder: &mut FocusBuilder) {}
+
+    fn container(&self) -> Option<ContainerFlag> {
+        Some(self.container.clone())
+    }
+
+    fn area(&self) -> Rect {
+        self.area
+    }
+
+    fn area_z(&self) -> u16 {
+        self.area_z
+    }
+}
+
 impl WindowFrame for DecoOneFrame {
     fn as_has_focus(&self) -> &dyn HasFocus {
+        self
+    }
+
+    fn as_focus_container(&self) -> &dyn FocusContainer {
         self
     }
 }
@@ -451,14 +474,6 @@ impl DecoOneFrame {
 impl DecoOneState {
     pub fn new() -> Self {
         Self::default()
-    }
-
-    pub fn mode(&self) -> KeyboardMode {
-        self.mode
-    }
-
-    pub fn set_mode(&mut self, mode: KeyboardMode) {
-        self.mode = mode;
     }
 }
 
@@ -489,6 +504,14 @@ impl WindowManagerState for DecoOneState {
         self.offset = offset;
         self.calculate_area_win();
         self.calculate_snaps();
+    }
+
+    fn set_mode(&mut self, mode: WindowMode) {
+        self.mode = mode;
+    }
+
+    fn mode(&self) -> WindowMode {
+        self.mode
     }
 
     fn container(&self) -> ContainerFlag {
@@ -682,12 +705,6 @@ impl WindowManagerState for DecoOneState {
                 (self.offset.y - self.area.y) as i16 * -1i16
             },
         )
-    }
-}
-
-impl RelocatableState for DecoOneState {
-    fn relocate(&mut self, shift: (i16, i16), clip: Rect) {
-        todo!()
     }
 }
 
@@ -1387,19 +1404,7 @@ impl HandleEvent<crossterm::event::Event, Regular, DecoOneOutcome> for DecoOneSt
     fn handle(&mut self, event: &crossterm::event::Event, _qualifier: Regular) -> DecoOneOutcome {
         let mut r = DecoOneOutcome::Continue;
 
-        if self.container.get() {
-            r = r.or_else(|| match event {
-                ct_event!(keycode press F(8)) => {
-                    self.mode = match self.mode {
-                        KeyboardMode::Regular => KeyboardMode::Config,
-                        KeyboardMode::Config => KeyboardMode::Regular,
-                    };
-                    DecoOneOutcome::Changed
-                }
-                _ => DecoOneOutcome::Continue,
-            });
-        }
-        if self.mode == KeyboardMode::Config && self.container.get() {
+        if self.mode == WindowMode::Config && self.container.get() {
             if let Some(handle) = self.focused_window() {
                 r = r.or_else(|| match event {
                     ct_event!(key press '0') => {
@@ -1474,4 +1479,11 @@ impl HandleEvent<crossterm::event::Event, MouseOnly, DecoOneOutcome> for DecoOne
         });
         r
     }
+}
+
+impl<T, S> WindowsState<T, S, DecoOne>
+where
+    T: ?Sized,
+    S: ?Sized,
+{
 }

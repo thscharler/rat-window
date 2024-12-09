@@ -1,7 +1,9 @@
 use crate::event::WindowsOutcome;
 use crate::window_manager::WindowManager;
-use crate::{render_windows, WindowManagerState, Windows, WindowsState};
+use crate::{render_windows, WindowManagerState, WindowMode, Windows, WindowsState};
+use rat_cursor::HasScreenCursor;
 use rat_event::{ConsumedEvent, HandleEvent, Outcome, Regular};
+use rat_focus::{ContainerFlag, FocusBuilder, FocusContainer};
 use rat_reloc::RelocatableState;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -19,10 +21,12 @@ pub trait WinCtWidget {
 ///
 /// Trait for a window with event handling.
 ///
-pub trait WinCtState: RelocatableState + Any
+pub trait WinCtState: RelocatableState + HasScreenCursor + Any
 where
     Self: HandleEvent<crossterm::event::Event, Regular, Outcome>,
 {
+    /// Cast the window as a FocusContainer for focus handling.
+    fn as_focus_container(&self) -> &dyn FocusContainer;
 }
 
 impl dyn WinCtState {
@@ -82,6 +86,70 @@ where
             buf,
             state,
         );
+    }
+}
+
+impl<T, M> HasScreenCursor for WindowsState<T, dyn WinCtState, M>
+where
+    T: WinCtWidget + ?Sized + 'static,
+    M: WindowManager + Debug,
+{
+    fn screen_cursor(&self) -> Option<(u16, u16)> {
+        // only have the windows themselves.
+        let manager = self.rc.manager.borrow();
+        if manager.mode() == WindowMode::Config {
+            None
+        } else {
+            if let Some(handle) = manager.front_window() {
+                let window_state = self.window_state(handle);
+                let window_state = window_state.borrow();
+                window_state.screen_cursor()
+            } else {
+                None
+            }
+        }
+    }
+}
+
+impl<T, M> FocusContainer for WindowsState<T, dyn WinCtState, M>
+where
+    T: WinCtWidget + ?Sized + 'static,
+    M: WindowManager + Debug,
+{
+    fn build(&self, builder: &mut FocusBuilder) {
+        // only have the windows themselves.
+        let manager = self.rc.manager.borrow();
+
+        if manager.mode() == WindowMode::Config {
+            for handle in self.handles_create() {
+                let frame = manager.window_frame(handle);
+                // only add the window as widget
+                builder.widget(frame.as_has_focus());
+            }
+        } else {
+            for handle in self.handles_create().into_iter() {
+                let frame = manager.window_frame(handle);
+                let frame_container = frame.as_focus_container();
+                let window_state = self.window_state(handle);
+
+                let tag = builder.start(
+                    frame_container.container(),
+                    frame_container.area(),
+                    frame_container.area_z(),
+                );
+                builder.container(window_state.borrow().as_focus_container());
+                builder.end(tag);
+            }
+        }
+    }
+
+    fn container(&self) -> Option<ContainerFlag> {
+        // container for all windows
+        Some(self.rc.manager.borrow().container())
+    }
+
+    fn area(&self) -> Rect {
+        Rect::default()
     }
 }
 

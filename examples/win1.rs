@@ -2,9 +2,12 @@ use crate::max_win::{MaxWin, MaxWinState};
 use crate::min_win::{MinWin, MinWinState};
 use crate::mini_salsa::theme::THEME;
 use crate::mini_salsa::{run_ui, setup_logging, MiniSalsaState};
+use log::debug;
 use rat_event::{ct_event, ConsumedEvent, HandleEvent, Outcome, Regular};
-use rat_focus::{FocusBuilder, FocusContainer};
-use rat_window::{DecoOne, DecoOneState, WinCtState, WinCtWidget, Windows, WindowsState};
+use rat_focus::{Focus, FocusBuilder, FocusContainer};
+use rat_window::{
+    DecoOne, DecoOneState, WinCtState, WinCtWidget, WindowMode, Windows, WindowsState,
+};
 use ratatui::layout::{Alignment, Constraint, Layout, Position, Rect};
 use ratatui::widgets::{Block, BorderType, StatefulWidget};
 use ratatui::Frame;
@@ -18,6 +21,7 @@ fn main() -> Result<(), anyhow::Error> {
     let mut data = Data {};
 
     let mut state = State {
+        focus: None,
         win: WindowsState::new(DecoOneState::new()),
     };
 
@@ -33,6 +37,7 @@ fn main() -> Result<(), anyhow::Error> {
 struct Data {}
 
 struct State {
+    focus: Option<Focus>,
     win: WindowsState<dyn WinCtWidget<State = dyn WinCtState>, dyn WinCtState, DecoOne>,
 }
 
@@ -84,11 +89,15 @@ fn handle_windows(
     _istate: &mut MiniSalsaState,
     state: &mut State,
 ) -> Result<Outcome, anyhow::Error> {
-    let mut b = FocusBuilder::new(None).enable_log();
-    b.container(state);
-    let mut focus = b.build();
-    // focus.enable_log();
+    let old_focus = state.focus.take();
+    let mut focus = FocusBuilder::rebuild(state, old_focus);
+    focus.enable_log();
+
+    debug!("focus {:#?}", focus);
+
     let f = focus.handle(event, Regular);
+
+    state.focus = Some(focus);
 
     let r = match event {
         ct_event!(keycode press F(2)) => {
@@ -113,6 +122,16 @@ fn handle_windows(
 
             Outcome::Changed
         }
+        ct_event!(keycode press F(8)) => match state.win.mode() {
+            WindowMode::Regular => {
+                state.win.set_mode(WindowMode::Config);
+                Outcome::Changed
+            }
+            WindowMode::Config => {
+                state.win.set_mode(WindowMode::Regular);
+                Outcome::Changed
+            }
+        },
         _ => Outcome::Continue,
     };
 
@@ -122,20 +141,25 @@ fn handle_windows(
 }
 
 impl FocusContainer for State {
-    fn build(&self, _builder: &mut FocusBuilder) {
-        // builder.container(&self.win);
+    fn build(&self, builder: &mut FocusBuilder) {
+        builder.container(&self.win);
     }
 }
 
 // -------------------------------------------------------------
 
 pub mod min_win {
+    use crate::mini_salsa::text_input_mock::{TextInputMock, TextInputMockState};
     use crate::mini_salsa::theme::THEME;
     use crossterm::event::Event;
-    use rat_event::{ct_event, HandleEvent, Outcome, Regular};
+    use rat_cursor::HasScreenCursor;
+    use rat_event::{HandleEvent, Outcome, Regular};
+    use rat_focus::{FocusBuilder, FocusContainer};
+    use rat_reloc::RelocatableState;
     use rat_window::{fill_buffer, WinCtState, WinCtWidget, WinFlags, WinHandle};
     use ratatui::buffer::Buffer;
     use ratatui::layout::{Position, Rect};
+    use ratatui::widgets::StatefulWidget;
     use std::cell::RefCell;
     use std::rc::Rc;
 
@@ -155,6 +179,12 @@ pub mod min_win {
                     cell.set_symbol(state.fill.as_str());
                 }
             }
+
+            let mock_area = Rect::new(area.x + 1, area.y + 1, area.width * 2 / 3, 1);
+            TextInputMock::default()
+                .style(THEME.text_input())
+                .focus_style(THEME.text_focus())
+                .render(mock_area, buf, &mut state.m0);
         }
     }
 
@@ -168,11 +198,35 @@ pub mod min_win {
     pub struct MinWinState {
         fill: String,
 
+        m0: TextInputMockState,
+
         handle: Option<WinHandle>,
         win: WinFlags,
     }
 
-    impl WinCtState for MinWinState {}
+    impl RelocatableState for MinWinState {
+        fn relocate(&mut self, shift: (i16, i16), clip: Rect) {
+            self.m0.relocate(shift, clip);
+        }
+    }
+
+    impl HasScreenCursor for MinWinState {
+        fn screen_cursor(&self) -> Option<(u16, u16)> {
+            self.m0.screen_cursor()
+        }
+    }
+
+    impl FocusContainer for MinWinState {
+        fn build(&self, builder: &mut FocusBuilder) {
+            builder.widget(&self.m0);
+        }
+    }
+
+    impl WinCtState for MinWinState {
+        fn as_focus_container(&self) -> &dyn FocusContainer {
+            self
+        }
+    }
 
     impl MinWinState {
         pub fn new() -> Self {
@@ -199,19 +253,21 @@ pub mod min_win {
     }
 
     impl HandleEvent<Event, Regular, Outcome> for MinWinState {
-        fn handle(&mut self, event: &Event, _qualifier: Regular) -> Outcome {
-            match event {
-                ct_event!(mouse down Left for _x,_y) => Outcome::Changed,
-                _ => Outcome::Continue,
-            }
+        fn handle(&mut self, _event: &Event, _qualifier: Regular) -> Outcome {
+            // ???
+            Outcome::Continue
         }
     }
 }
 
 pub mod max_win {
+    use crate::mini_salsa::text_input_mock::{TextInputMock, TextInputMockState};
     use crate::mini_salsa::theme::THEME;
     use crossterm::event::Event;
-    use rat_event::{ct_event, HandleEvent, Outcome, Regular};
+    use rat_cursor::HasScreenCursor;
+    use rat_event::{HandleEvent, Outcome, Regular};
+    use rat_focus::{FocusBuilder, FocusContainer};
+    use rat_reloc::RelocatableState;
     use rat_window::{
         fill_buffer, DecoOne, WinCtState, WinCtWidget, WinFlags, WinHandle, WindowsState,
     };
@@ -219,6 +275,7 @@ pub mod max_win {
     use ratatui::layout::Rect;
     use ratatui::prelude::Widget;
     use ratatui::text::Line;
+    use ratatui::widgets::StatefulWidget;
     use std::cell::RefCell;
     use std::rc::Rc;
 
@@ -233,7 +290,32 @@ pub mod max_win {
 
             fill_buffer(" ", THEME.deepblue(0), area, buf);
 
-            let mut info_area = Rect::new(area.x, area.y, area.width, 1);
+            let mut t_area = Rect::new(area.x, area.y + 1, area.width * 2 / 3, 1);
+            TextInputMock::default()
+                .style(THEME.text_input())
+                .focus_style(THEME.text_focus())
+                .render(t_area, buf, &mut state.f0);
+            t_area.y += 2;
+
+            TextInputMock::default()
+                .style(THEME.text_input())
+                .focus_style(THEME.text_focus())
+                .render(t_area, buf, &mut state.f1);
+            t_area.y += 2;
+
+            TextInputMock::default()
+                .style(THEME.text_input())
+                .focus_style(THEME.text_focus())
+                .render(t_area, buf, &mut state.f2);
+            t_area.y += 2;
+
+            TextInputMock::default()
+                .style(THEME.text_input())
+                .focus_style(THEME.text_focus())
+                .render(t_area, buf, &mut state.f3);
+            t_area.y += 2;
+
+            let mut info_area = Rect::new(area.x, t_area.y, area.width, 1);
             for handle in state.windows.handles_render() {
                 let win_area = state.windows.window_area(handle);
 
@@ -256,30 +338,63 @@ pub mod max_win {
 
     #[derive(Debug)]
     pub struct MaxWinState {
-        msg: String,
+        pub f0: TextInputMockState,
+        pub f1: TextInputMockState,
+        pub f2: TextInputMockState,
+        pub f3: TextInputMockState,
 
         windows: WindowsState<dyn WinCtWidget<State = dyn WinCtState>, dyn WinCtState, DecoOne>,
         handle: Option<WinHandle>,
         win: WinFlags,
     }
 
-    impl WinCtState for MaxWinState {}
+    impl RelocatableState for MaxWinState {
+        fn relocate(&mut self, shift: (i16, i16), clip: Rect) {
+            self.f0.relocate(shift, clip);
+            self.f1.relocate(shift, clip);
+            self.f2.relocate(shift, clip);
+            self.f3.relocate(shift, clip);
+        }
+    }
+
+    impl HasScreenCursor for MaxWinState {
+        fn screen_cursor(&self) -> Option<(u16, u16)> {
+            self.f0
+                .screen_cursor()
+                .or(self.f1.screen_cursor())
+                .or(self.f2.screen_cursor())
+                .or(self.f3.screen_cursor())
+        }
+    }
+
+    impl FocusContainer for MaxWinState {
+        fn build(&self, builder: &mut FocusBuilder) {
+            builder.widget(&self.f0);
+            builder.widget(&self.f1);
+            builder.widget(&self.f2);
+            builder.widget(&self.f3);
+        }
+    }
+
+    impl WinCtState for MaxWinState {
+        fn as_focus_container(&self) -> &dyn FocusContainer {
+            self
+        }
+    }
 
     impl MaxWinState {
         pub fn new(
             windows: WindowsState<dyn WinCtWidget<State = dyn WinCtState>, dyn WinCtState, DecoOne>,
         ) -> Self {
             Self {
-                msg: "".to_string(),
+                f0: Default::default(),
+                f1: Default::default(),
+                f2: Default::default(),
+                f3: Default::default(),
                 windows,
                 handle: None,
                 win: Default::default(),
             }
-        }
-
-        pub fn message(mut self, message: String) -> Self {
-            self.msg = message;
-            self
         }
 
         pub fn set_handle(&mut self, handle: WinHandle) {
@@ -298,14 +413,9 @@ pub mod max_win {
     }
 
     impl HandleEvent<Event, Regular, Outcome> for MaxWinState {
-        fn handle(&mut self, event: &Event, _qualifier: Regular) -> Outcome {
-            match event {
-                ct_event!(mouse any for m) => {
-                    self.msg = format!("{}:{}", m.column, m.row);
-                    Outcome::Changed
-                }
-                _ => Outcome::Continue,
-            }
+        fn handle(&mut self, _event: &Event, _qualifier: Regular) -> Outcome {
+            // TODO??
+            Outcome::Continue
         }
     }
 }

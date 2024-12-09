@@ -4,7 +4,9 @@ use crate::mini_salsa::theme::THEME;
 use crate::mini_salsa::{run_ui, setup_logging, MiniSalsaState};
 use rat_event::{ct_event, ConsumedEvent, HandleEvent, Outcome, Regular};
 use rat_focus::{Focus, FocusBuilder, FocusContainer};
-use rat_window::{DecoOne, DecoOneState, WinFlags, WinState, WinWidget, Windows, WindowsState};
+use rat_window::{
+    DecoOne, DecoOneState, WinFlags, WinState, WinWidget, WindowMode, Windows, WindowsState,
+};
 use ratatui::layout::{Alignment, Constraint, Layout, Position, Rect};
 use ratatui::widgets::{Block, BorderType, StatefulWidget};
 use ratatui::Frame;
@@ -91,20 +93,6 @@ fn handle_windows(
     let f = focus.handle(event, Regular);
     state.focus = Some(focus);
 
-    // let fd = focus.clone_destruct();
-    // debug!("{:#?}", fd);
-    // for handle in state.win.handles_render() {
-    //     let win_state = state.win.window_state(handle);
-    //     let mut win_state = win_state.borrow_mut();
-    //     if let Some(minwin) = win_state.deref_mut().downcast_mut::<MinWinState>() {
-    //         minwin.focus_flags = fd.0.clone();
-    //         minwin.areas = fd.1.clone();
-    //         minwin.z_rects = fd.2.clone();
-    //         minwin.navigations = fd.3.clone();
-    //         minwin.containers = fd.4.clone();
-    //     }
-    // }
-
     let r = match event {
         ct_event!(keycode press F(2)) => {
             let minwin = MinWin;
@@ -154,6 +142,16 @@ fn handle_windows(
 
             Outcome::Changed
         }
+        ct_event!(keycode press F(8)) => match state.win.mode() {
+            WindowMode::Regular => {
+                state.win.set_mode(WindowMode::Config);
+                Outcome::Changed
+            }
+            WindowMode::Config => {
+                state.win.set_mode(WindowMode::Regular);
+                Outcome::Changed
+            }
+        },
         _ => Outcome::Continue,
     };
 
