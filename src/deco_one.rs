@@ -54,6 +54,8 @@ pub struct DecoOneState {
     order: Vec<WinHandle>,
     /// Currently dragged mode and window
     drag: Option<Drag>,
+    /// Maximum z-index used for windows.
+    max_z: u16,
 
     /// Keyboard mode
     mode: WindowMode,
@@ -172,6 +174,8 @@ impl WindowManager for DecoOne {
     fn render_init(&self, state: &mut Self::State) {
         let shift = state.shift();
 
+        state.max_z = (state.order.len() as u16 + 1) * 3;
+
         for (order_idx, handle) in state.order.iter().enumerate() {
             let frame = state.frames.get_mut(handle).expect("window");
 
@@ -185,7 +189,7 @@ impl WindowManager for DecoOne {
             frame.area = relocate_area(frame.area_win, shift, state.area);
             // use a z value of 10xorder. should be enough for
             // possible popups inside a window.
-            frame.area_z = order_idx as u16 * 10;
+            frame.area_z = order_idx as u16 * 3;
 
             frame.close_area = if frame.flags.closeable {
                 Rect::new(frame.area.right().saturating_sub(4), frame.area.top(), 3, 1)
@@ -504,6 +508,11 @@ impl WindowManagerState for DecoOneState {
         self.offset = offset;
         self.calculate_area_win();
         self.calculate_snaps();
+    }
+
+    /// Maximum z-index used for windows.
+    fn max_z(&self) -> u16 {
+        self.max_z
     }
 
     fn set_mode(&mut self, mode: WindowMode) {

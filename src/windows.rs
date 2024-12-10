@@ -175,6 +175,12 @@ where
         self.rc.manager.borrow().mode()
     }
 
+    /// Each window has its own z-index.
+    /// This returns the maximum value for the z-index used.
+    pub fn max_z(&self) -> u16 {
+        self.rc.manager.borrow().max_z()
+    }
+
     /// Container flag for all windows.
     pub fn container(&self) -> ContainerFlag {
         self.rc.manager.borrow().container()

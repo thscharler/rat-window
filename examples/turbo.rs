@@ -311,7 +311,9 @@ pub mod turbo {
     };
     use rat_widget::popup::Placement;
     use rat_widget::shadow::{Shadow, ShadowDirection};
-    use rat_window::{DecoOne, WinSalsaState, WinSalsaWidget, Windows, WindowsState};
+    use rat_window::{
+        DecoOne, WinSalsaState, WinSalsaWidget, WindowManagerState, Windows, WindowsState,
+    };
     use ratatui::buffer::Buffer;
     use ratatui::layout::{Constraint, Direction, Layout, Rect};
     use ratatui::style::{Style, Stylize};
@@ -516,6 +518,10 @@ pub mod turbo {
             .offset((100, 100).into())
             .render(r[1], buf, &mut ctx.g.win.clone(), ctx)?;
 
+            // the menu popup must be above the windows.
+            // this is needed for mouse focus.
+            state.menu.set_popup_z(ctx.g.win.max_z());
+
             if let Some(cursor) = ctx.g.win.screen_cursor() {
                 ctx.set_screen_cursor(Some(cursor));
             }
@@ -685,7 +691,7 @@ pub mod turbo_editor {
     use rat_focus::{FocusBuilder, FocusContainer};
     use rat_reloc::RelocatableState;
     use rat_salsa::{AppContext, AppState, AppWidget, Control, RenderContext};
-    use rat_widget::text_input::{TextInput, TextInputState};
+    use rat_widget::textarea::{TextArea, TextAreaState};
     use rat_window::{WinHandle, WinSalsaState, WinSalsaWidget};
     use ratatui::buffer::Buffer;
     use ratatui::layout::Rect;
@@ -701,7 +707,7 @@ pub mod turbo_editor {
     #[derive(Debug)]
     pub struct TurboEditorState {
         pub area: Rect,
-        pub editor: TextInputState,
+        pub editor: TextAreaState,
         pub handle: Option<WinHandle>,
     }
 
@@ -725,7 +731,7 @@ pub mod turbo_editor {
         ) -> Result<(), Error> {
             let state = state.downcast_mut::<TurboEditorState>().expect("state");
 
-            TextInput::new()
+            TextArea::new()
                 .block(
                     Block::bordered().border_style(
                         Style::default().fg(ctx.g.theme.scheme().black[0]).bg(ctx
@@ -755,7 +761,7 @@ pub mod turbo_editor {
         pub fn new() -> Self {
             Self {
                 area: Default::default(),
-                editor: TextInputState::named("turbo-edit"),
+                editor: TextAreaState::named("turbo-edit"),
                 handle: None,
             }
         }
@@ -989,7 +995,7 @@ pub mod theme {
 
         /// Data display style. Used for lists, tables, ...
         pub fn data(&self) -> Style {
-            Style::default().fg(self.s.white[0]).bg(self.s.gray[2])
+            Style::default().fg(self.s.black[0]).bg(self.s.gray[2])
         }
 
         /// Background for dialogs.

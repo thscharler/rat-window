@@ -61,6 +61,9 @@ pub trait WindowManagerState {
     /// outside the area.
     fn set_offset(&mut self, offset: Position);
 
+    /// Maximum z-index used for windows.
+    fn max_z(&self) -> u16;
+
     /// Set current window mode.
     fn set_mode(&mut self, mode: WindowMode);
 
