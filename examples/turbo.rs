@@ -311,9 +311,7 @@ pub mod turbo {
     };
     use rat_widget::popup::Placement;
     use rat_widget::shadow::{Shadow, ShadowDirection};
-    use rat_window::{
-        DecoOne, WinSalsaState, WinSalsaWidget, WindowManagerState, Windows, WindowsState,
-    };
+    use rat_window::{DecoOne, WinSalsaState, WinSalsaWidget, Windows, WindowsState};
     use ratatui::buffer::Buffer;
     use ratatui::layout::{Constraint, Direction, Layout, Rect};
     use ratatui::style::{Style, Stylize};

@@ -279,7 +279,7 @@ impl WindowManager for DecoOne {
         };
 
         // render border
-        self.block.as_ref().render_ref(frame.area_win, buf);
+        self.block.render_ref(frame.area_win, buf);
 
         // complete title bar
         for x in frame.area_win.left() + 1..frame.area_win.right().saturating_sub(1) {
