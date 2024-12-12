@@ -131,6 +131,7 @@ fn handle_windows(
                 state.win.set_mode(WindowMode::Regular);
                 Outcome::Changed
             }
+            WindowMode::Widget => Outcome::Changed,
         },
         _ => Outcome::Continue,
     };

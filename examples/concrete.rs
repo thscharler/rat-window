@@ -416,7 +416,7 @@ pub mod min_win {
 
                     // need the container for rendering the focus.
                     let container_end =
-                        builder.start(Some(manager.window_container(handle)), win_area);
+                        builder.start(Some(manager.window_container(handle)), win_area, 0);
 
                     builder.container(window_state.borrow().deref());
 
