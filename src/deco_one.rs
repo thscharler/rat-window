@@ -4,7 +4,9 @@ use crate::window_manager::{WindowManager, WindowManagerState};
 use crate::{WinFlags, WinHandle, WindowFrame, WindowMode, WindowsState};
 use rat_event::util::MouseFlags;
 use rat_event::{ct_event, ConsumedEvent, HandleEvent, MouseOnly, Outcome, Regular};
-use rat_focus::{ContainerFlag, FocusBuilder, FocusContainer, FocusFlag, HasFocus, Navigation};
+use rat_focus::{
+    ContainerFlag, Focus, FocusBuilder, FocusContainer, FocusFlag, HasFocus, Navigation,
+};
 use rat_reloc::relocate_area;
 use ratatui::buffer::{Buffer, Cell};
 use ratatui::layout::{Alignment, Position, Rect, Size};
@@ -57,10 +59,14 @@ pub struct DecoOneState {
     /// Maximum z-index used for windows.
     max_z: u16,
 
+    /// Per window focus. Rebuild when switching the active/front/focused window.
+    focus_focus: Option<Focus>,
     /// Keyboard mode
     mode: WindowMode,
     /// Container focus for all windows.
     container: ContainerFlag,
+    /// Focus flag for the Windows widget.
+    focus: FocusFlag,
     /// mouse flags
     mouse: MouseFlags,
 
@@ -515,6 +521,16 @@ impl WindowManagerState for DecoOneState {
         self.max_z
     }
 
+    /// Current Focus impl
+    fn focus_focus(&mut self) -> &mut Option<Focus> {
+        &mut self.focus_focus
+    }
+
+    /// Set current Focus impl
+    fn set_focus_focus(&mut self, focus: Option<Focus>) {
+        self.focus_focus = focus;
+    }
+
     fn set_mode(&mut self, mode: WindowMode) {
         self.mode = mode;
     }
@@ -525,6 +541,10 @@ impl WindowManagerState for DecoOneState {
 
     fn container(&self) -> ContainerFlag {
         self.container.clone()
+    }
+
+    fn focus(&self) -> FocusFlag {
+        self.focus.clone()
     }
 
     fn window_container(&self, handle: WinHandle) -> ContainerFlag {

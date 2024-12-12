@@ -1,7 +1,8 @@
+use crate::event::WindowsOutcome;
 use crate::{render_windows, WindowManager, WindowManagerState, WindowMode, Windows, WindowsState};
 use rat_cursor::HasScreenCursor;
-use rat_event::{ConsumedEvent, HandleEvent, Outcome, Regular};
-use rat_focus::{ContainerFlag, FocusBuilder, FocusContainer};
+use rat_event::{ct_event, ConsumedEvent, HandleEvent, Outcome, Regular};
+use rat_focus::{ContainerFlag, FocusBuilder, FocusContainer, Navigation};
 use rat_reloc::RelocatableState;
 use rat_salsa::timer::TimeOut;
 use rat_salsa::{AppContext, AppState, AppWidget, Control, RenderContext};
@@ -80,7 +81,7 @@ where
     Message: 'static + Send,
     Error: 'static + Send,
     M: WindowManager + Debug,
-    M::Outcome: ConsumedEvent + Into<Outcome>,
+    M::Outcome: ConsumedEvent + Into<WindowsOutcome>,
     M::State: HandleEvent<crossterm::event::Event, Regular, M::Outcome>,
 {
     type State = WindowsState<
@@ -157,6 +158,8 @@ where
                 // only add the window as widget
                 builder.widget(frame.as_has_focus());
             }
+        } else if manager.mode() == WindowMode::Widget {
+            builder.add_widget(manager.focus(), manager.area(), 0, Navigation::Mouse);
         } else {
             for handle in self.handles_create().into_iter() {
                 let frame = manager.window_frame(handle);
@@ -192,7 +195,7 @@ impl<Global, Message, Error, M> AppState<Global, Message, Error>
     >
 where
     M: WindowManager,
-    M::Outcome: ConsumedEvent + Into<Outcome>,
+    M::Outcome: ConsumedEvent + Into<WindowsOutcome>,
     M::State: HandleEvent<crossterm::event::Event, Regular, M::Outcome>,
     Message: 'static + Send,
     Error: 'static + Send,
@@ -236,6 +239,63 @@ where
             .deref_mut()
             .handle(event, Regular)
             .into();
+
+        let r0: Control<Message> = r0.into();
+
+        let r0 = 'k: {
+            if !r0.is_consumed() {
+                match event {
+                    ct_event!(keycode press F(3)) => {
+                        let mut manager = self.rc.manager.borrow_mut();
+                        let Some(front) = manager.front_window() else {
+                            break 'k Control::<Message>::Continue;
+                        };
+
+                        let handles = self.handles_create();
+
+                        let mut cur_idx = 0;
+                        for (idx, handle) in self.handles_create().iter().enumerate() {
+                            if front == *handle {
+                                cur_idx = idx;
+                            }
+                        }
+
+                        cur_idx += 1;
+                        if cur_idx >= handles.len() {
+                            cur_idx = 0;
+                        }
+
+                        let new_front = handles[cur_idx];
+                        manager.window_to_front(new_front);
+
+                        let old_focus = manager.focus_focus().take();
+                        let frame = manager.window_frame(new_front);
+                        let frame_container = frame.as_focus_container();
+                        let window_state = self.window_state(new_front);
+
+                        let mut builder = FocusBuilder::new(old_focus);
+                        let tag = builder.start(
+                            frame_container.container(),
+                            frame_container.area(),
+                            frame_container.area_z(),
+                        );
+                        builder.container(window_state.borrow().as_focus_container());
+                        builder.end(tag);
+                        let focus = builder.build();
+
+                        focus.enable_log();
+                        focus.first();
+                        manager.set_focus_focus(Some(focus));
+
+                        Control::Changed
+                    }
+                    ct_event!(keycode press F(4)) => Control::Continue,
+                    _ => Control::Continue,
+                }
+            } else {
+                r0
+            }
+        };
 
         // forward to all windows
         let r1 = if !r0.is_consumed() {

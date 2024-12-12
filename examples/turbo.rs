@@ -47,7 +47,7 @@ pub mod global {
     use anyhow::Error;
     use rat_widget::msgdialog::MsgDialogState;
     use rat_widget::statusline::StatusLineState;
-    use rat_window::{DecoOneState, WinSalsaState, WinSalsaWidget, WindowsState};
+    use rat_window::{DecoOneState, WinSalsaState, WinSalsaWidget, WindowMode, WindowsState};
 
     pub struct GlobalState {
         pub cfg: TurboConfig,
@@ -62,13 +62,15 @@ pub mod global {
 
     impl GlobalState {
         pub fn new(cfg: TurboConfig, theme: TurboTheme) -> Self {
-            Self {
+            let mut s = Self {
                 cfg,
                 theme,
                 win: WindowsState::new(DecoOneState::new()),
                 status: Default::default(),
                 error_dlg: Default::default(),
-            }
+            };
+            s.win.set_mode(WindowMode::Widget);
+            s
         }
     }
 }
@@ -344,8 +346,7 @@ pub mod turbo {
                 .item_parsed("_Tools")
                 .item_parsed("_Options")
                 .item_parsed("_Window")
-                .item_parsed("_Help")
-                .disabled(true);
+                .item_parsed("_Help");
         }
 
         fn submenu(&'a self, n: usize, submenu: &mut MenuBuilder<'a>) {
@@ -664,6 +665,7 @@ pub mod turbo {
                     }
                 });
             }
+
             try_flow!(match self.menu.handle(event, Regular) {
                 MenuOutcome::Selected(_) => {
                     self.menu_environment.set_active(false);

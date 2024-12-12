@@ -1,5 +1,5 @@
 use crate::{WinFlags, WinHandle, Windows, WindowsState};
-use rat_focus::{ContainerFlag, FocusContainer, FocusFlag, HasFocus};
+use rat_focus::{ContainerFlag, Focus, FocusContainer, FocusFlag, HasFocus};
 use rat_reloc::RelocatableState;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
@@ -64,6 +64,12 @@ pub trait WindowManagerState {
     /// Maximum z-index used for windows.
     fn max_z(&self) -> u16;
 
+    /// Current Focus impl
+    fn focus_focus(&mut self) -> &mut Option<Focus>;
+
+    /// Set current Focus impl
+    fn set_focus_focus(&mut self, focus: Option<Focus>);
+
     /// Set current window mode.
     fn set_mode(&mut self, mode: WindowMode);
 
@@ -72,6 +78,9 @@ pub trait WindowManagerState {
 
     /// Container flag for all windows.
     fn container(&self) -> ContainerFlag;
+
+    /// Focus flag for the Windows widget.
+    fn focus(&self) -> FocusFlag;
 
     /// Container flag for the given window.
     fn window_container(&self, handle: WinHandle) -> ContainerFlag;
@@ -160,9 +169,11 @@ pub trait WindowManagerState {
 /// Mode for the window manager.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum WindowMode {
-    /// Normal mode.
+    /// Regular mode.
     #[default]
     Regular,
+    /// Widget mode.
+    Widget,
     /// Window configuration mode.
     ///
     /// When this mode is set size and position of the windows
