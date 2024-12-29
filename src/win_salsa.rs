@@ -1,7 +1,7 @@
 use crate::event::WindowsOutcome;
 use crate::{render_windows, WindowManager, WindowManagerState, WindowMode, Windows, WindowsState};
 use rat_cursor::HasScreenCursor;
-use rat_event::{ct_event, ConsumedEvent, HandleEvent, Outcome, Regular};
+use rat_event::{ct_event, ConsumedEvent, HandleEvent, Regular};
 use rat_focus::{ContainerFlag, FocusBuilder, FocusContainer, Navigation};
 use rat_reloc::RelocatableState;
 use rat_salsa::timer::TimeOut;
